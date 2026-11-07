@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Parent dashboard · ParentGuard</title><link rel="stylesheet" href="style.css"><link rel="stylesheet" href="theme.css"></head>
+<body><header class="nav"><a class="logo" href="index.html"><span aria-hidden="true">🛡️</span>ParentGuard</a><nav class="links" aria-label="Main"><a href="index.html">Home</a><a href="parent.html" aria-current="page">My children</a></nav><div class="end"><div id="who"></div></div></header><main class="shell"><h1 class="sr">My children</h1><div id="app"><div class="c">Connecting to Firebase…</div></div></main>
+<script type="module">
+import {auth,db,A,F,panel,esc,online,J,busy} from './common.js';
+import {greeting} from './ui.js';
+const app=document.getElementById('app'),who=document.getElementById('who');let unsubs=[];
+const stop=()=>{unsubs.forEach(u=>u());unsubs=[]};
+function login(message=''){stop();who.innerHTML='';
+ app.innerHTML=`<section class="c login"><h2>Parent sign in</h2>${message?`<p class="off">${esc(message)}</p>`:''}<label for="e">Email address</label><input id="e" type="email" autocomplete="username"><label for="p">Password</label><input id="p" type="password" autocomplete="current-password"><button id="go">Sign in</button><p id="m" role="status"></p><p>Are you a new parent? <a href="subscription.html"><b>Subscribe here</b></a></p><p><a href="index.html">Home</a></p></section>`;
+ const e=document.getElementById('e'),p=document.getElementById('p'),b=document.getElementById('go'),m=document.getElementById('m');
+ const go=()=>busy(b,'Signing in…',async()=>{m.className='';m.textContent='';try{await A.signInWithEmailAndPassword(auth,e.value.trim(),p.value)}catch(x){m.className='off';m.textContent=x.code||x.message}});
+ b.onclick=go;p.addEventListener('keydown',x=>{if(x.key==='Enter')go()});}
+A.onAuthStateChanged(auth,async user=>{
+ stop();if(!user||user.isAnonymous){login();return;}
+ app.innerHTML='<div class="c">Checking parent account…</div>';
+ try{
+  const prof=await F.getDoc(F.doc(db,'parents',user.uid));
+  if(!prof.exists()||prof.data().uid!==user.uid){await A.signOut(auth);login('This account is not a ParentGuard parent. Contact your administrator.');return;}
+  who.innerHTML=`<small>${esc(prof.data().name||user.email)}</small> <button id="out" class="gr">Sign out</button>`;document.getElementById('out').onclick=()=>A.signOut(auth);
+  app.innerHTML='<section class="greet" id="greet"></section><section class="c" id="kidsBox" hidden></section><div id="one"></div>';
+  const gr=greeting(document.getElementById('greet'),prof.data().name||user.email,user.uid),box=document.getElementById('kidsBox'),one=document.getElementById('one');
+  let docs=new Map(),sel=null,el=null,sig='';
+  const draw=()=>{const list=[...docs.values()];gr.update({kids:list.length,online:list.filter(d=>online(J(d.data().status))).length});
+   if(!list.length){box.hidden=true;one.innerHTML='<section class="c empty">No children are linked to your account yet. Please contact your administrator.</section>';el=null;return;}
+   if(!sel||!docs.has(sel))sel=list[0].id;
+   box.hidden=list.length<2;
+   box.innerHTML='<h2>Choose a child</h2><div class="kids">'+list.map(d=>{const x=d.data(),on=online(J(x.status));return `<button class="kid ${d.id===sel?'act':''}" data-k="${d.id}"><span class="av">${esc((x.name||'?')[0].toUpperCase())}<i class="${on?'on':''}"></i></span><span>${esc(x.name||'Child')}<small>${x.suspended?'Suspended':on?'Online':'Offline'}</small></span></button>`}).join('')+'</div>';
+   box.querySelectorAll('[data-k]').forEach(b=>b.onclick=()=>{sel=b.dataset.k;sig='';draw();});
+   const doc=docs.get(sel),data=doc.data(),s=JSON.stringify([doc.id,data.name,data.adminCfg,data.suspended]);
+   if(s!==sig||!el){sig=s;el=panel(doc.id,data,'parent',cfg=>F.updateDoc(doc.ref,{cfg:JSON.stringify(cfg)}));one.replaceChildren(el);}else el.refresh(data);};
+  const listen=q=>F.onSnapshot(q,snap=>{snap.docChanges().forEach(c=>c.type==='removed'?docs.delete(c.doc.id):docs.set(c.doc.id,c.doc));draw();},e=>{one.innerHTML='<section class="c off">Could not load your children: '+esc(e.code||e.message)+'</section>';});
+  // children linked through parentIds (new) and the legacy single parentId
+  unsubs.push(listen(F.query(F.collection(db,'devices'),F.where('parentIds','array-contains',user.uid))),listen(F.query(F.collection(db,'devices'),F.where('parentId','==',user.uid))));
+ }catch(e){app.innerHTML='<section class="c"><p class="off">Could not open the dashboard: '+esc(e.code||e.message)+'</p></section>';}
+});
+</script></body></html>
