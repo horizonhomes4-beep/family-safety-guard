@@ -14,7 +14,7 @@ export async function busy(btn,label,fn,okLabel){if(!btn||btn.dataset.busy)retur
  try{const r=await fn();if(okLabel){btn.classList.remove("busy");btn.classList.add("done");btn.innerHTML="✓ "+esc(okLabel);await new Promise(x=>setTimeout(x,1300))}return r}
  finally{delete btn.dataset.busy;btn.disabled=false;btn.classList.remove("busy","done");btn.innerHTML=old}}
 export const esc=s=>String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
-export const online=s=>!!(s.seen&&Date.now()/1000-s.seen<90);
+export const online=s=>!!(s.seen&&!s.removed&&Date.now()/1000-s.seen<90);
 // A child can belong to several parents (parentIds). Legacy single parentId is still understood.
 export const parentsOf=d=>Array.isArray(d.parentIds)?d.parentIds:(d.parentId?[d.parentId]:[]);
 const pad=n=>String(n).padStart(2,"0");
@@ -148,7 +148,7 @@ export function panel(id,d,role,save){
  const head=()=>{const {s,on,lim,used,rem,run}=calc(),pct=lim?Math.min(100,(lim*60-(rem??0))/(lim*60)*100):0,lk=lockedNow(),
   until=Number(c.unlockedUntil||0),unl=(c.overrideMode==="unlock"&&(!until||until>Date.now()/1000))||until>Date.now()/1000,
   ack=pending&&(Number(s.policyAppliedAt||0)>=pending-2)?(pending=null,"✓ Device confirmed the change"):pending?"Sent. Waiting for the device to confirm…":"";
-  const al=[];if(!s.seen)al.push("The agent has never reported. Finish installing it on the child's PC.");else if(!on)al.push("Device offline for "+ago(s.seen).replace(" ago","")+". Locks and changes apply when it reconnects.");
+  const al=[];if(s.removed)al.push("ParentGuard was removed from this device by the administrator.");else if(s.protection==="off")al.push("Parental control is stopped on this device by the administrator. Nothing is restricted or monitored until it is resumed.");if(!s.seen)al.push("The agent has never reported. Finish installing it on the child's PC.");else if(!on)al.push("Device offline for "+ago(s.seen).replace(" ago","")+". Locks and changes apply when it reconnects.");
   const pr=reqs.filter(r=>r.status==="pending").length;if(pr)al.unshift(pr+" pending request"+(pr>1?"s":"")+" from "+(d.name||"the child")+". Open the Requests tab to answer.");
   if(on&&s.msg)al.push("Restriction active: "+s.msg);if(on&&s.policySyncError)al.push("The agent could not fetch the latest website command: "+s.policySyncError);if(lim&&rem!=null&&rem>0&&rem<lim*6)al.push("Screen time almost used up.");
   return `${d.suspended?`<div class=banner style="margin:0 0 14px">⛔ This child is suspended by the administrator. The device stays locked.</div>`:""}
@@ -338,7 +338,7 @@ export function panel(id,d,role,save){
   const q=b.dataset.q;if(q==="lock")commit({...c,paused:true,overrideMode:"lock",unlockedUntil:0},b);
   else if(q==="unlock"){const m=Number($("[data-q=unlock-min]").value);commit({...c,paused:false,overrideMode:"unlock",unlockedUntil:m?Math.floor(Date.now()/1000)+m*60:0},b)}
   else if(q==="resume")commit({...c,paused:false,overrideMode:"schedule",unlockedUntil:0},b);
-  else if(q==="extend"){const m=Number($("[data-q=extend-min]").value)||30,day=J(d.status).day||new Date().toLocaleDateString("sv"),p=c.bonus&&c.bonus.day===day?+c.bonus.min:0;commit({...c,bonus:{day,min:p+m}},b)}
+  else if(q==="extend"){const m=Number($("[data-q=extend-min]").value)||30,st0=J(d.status),fresh0=st0.seen&&Date.now()/1000-st0.seen<300,day=(fresh0&&st0.day)||new Date().toLocaleDateString("sv"),p=c.bonus&&c.bonus.day===day?+c.bonus.min:0;commit({...c,bonus:{day,min:p+m}},b)}
   else if(q==="save")doSave()});
  el.addEventListener("input",e=>{if(e.target.dataset.vq!==undefined){vq=e.target.value;$(".vl").innerHTML=visits()}});
  el.addEventListener("change",e=>{if(e.target.dataset.voice!==undefined){setVoicePref(e.target.value);if(talking){stopSpeak();talking=false;const sb=$("[data-speak]");if(sb){sb.classList.remove("playing");sb.innerHTML="🔊 Read aloud"}}toast("Voice changed. Press Read aloud to hear it.","ok");return}
