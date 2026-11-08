@@ -14,7 +14,7 @@ export async function busy(btn,label,fn,okLabel){if(!btn||btn.dataset.busy)retur
  try{const r=await fn();if(okLabel){btn.classList.remove("busy");btn.classList.add("done");btn.innerHTML="✓ "+esc(okLabel);await new Promise(x=>setTimeout(x,1300))}return r}
  finally{delete btn.dataset.busy;btn.disabled=false;btn.classList.remove("busy","done");btn.innerHTML=old}}
 export const esc=s=>String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
-export const online=s=>!!(s.seen&&Date.now()/1000-s.seen<90);
+export const online=s=>!!(s.seen&&!s.removed&&Date.now()/1000-s.seen<90);
 // A child can belong to several parents (parentIds). Legacy single parentId is still understood.
 export const parentsOf=d=>Array.isArray(d.parentIds)?d.parentIds:(d.parentId?[d.parentId]:[]);
 const pad=n=>String(n).padStart(2,"0");
@@ -37,11 +37,80 @@ const BR=["chrome.exe","msedge.exe","firefox.exe","brave.exe","opera.exe","vival
 const FILTERS=[["adult","Adult content","Pornography and explicit sites"],["gambling","Gambling & betting","Casinos, sportsbooks, lotteries"],["social","Social media","Facebook, TikTok, Instagram and similar"],["proxy","VPNs & proxies","Stops filter bypass tools"],["safe","Safe search","Google, Bing and YouTube restricted mode"]];
 const PRESETS={child:{adult:true,gambling:true,social:true,proxy:true,safeSearch:true},teen:{adult:true,gambling:true,social:false,proxy:true,safeSearch:true}};
 
+// ---- who is signed in? 'admin' | 'parent' | 'none'. Used to keep parents out of the admin and setup pages. ----
+export async function roleOf(user){
+ if(!user||user.isAnonymous)return "none";
+ try{if((await F.getDoc(F.doc(db,"admins",user.uid))).exists())return "admin"}catch{}
+ try{if((await F.getDoc(F.doc(db,"parents",user.uid))).exists())return "parent"}catch{}
+ return "none"}
+
+// ---- daily counters: they cover 00:00 to 23:59 of today only. Nothing from earlier days is kept or shown. ----
+const dayStart=()=>{const n=new Date();return Math.floor(new Date(n.getFullYear(),n.getMonth(),n.getDate()).getTime()/1000)};
+export const dayStr=()=>new Date().toLocaleDateString("sv");
+export const secToMidnight=()=>{const n=new Date();return Math.max(0,Math.floor((new Date(n.getFullYear(),n.getMonth(),n.getDate()+1)-n)/1000))};
+const DEFAULT_GAMES=["robloxplayerbeta.exe","minecraft.exe","javaw.exe","steam.exe","epicgameslauncher.exe","fortniteclient-win64-shipping.exe","leagueclient.exe","riotclientservices.exe","valorant.exe","among us.exe"];
+const GAME_RX=/(roblox|minecraft|fortnite|valorant|leagueclient|leagueoflegends|riotclient|^steam|epicgames|amongus|among us|genshin|pubg|^gta|csgo|^cs2|dota2|fifa|efootball|callofduty|warzone|r5apex|apexlegends|overwatch|rocketleague|terraria|stardew|cyberpunk|fallguys|brawlhalla|freefire|^bluestacks|^hd-player|^ldplayer|^noxplayer|javaw|solitaire|^ludo|^chess|^eadesktop|^ealauncher|^eaapp|^origin\.exe|battle\.net|^upc\.exe)/i;
+const NOT_GAME=/(gamebar|gameinput|gamingservices|xboxpcapp|xboxapp)/i;
+// Helpers that run in the background all day are not "apps the child used".
+const BG_APP=/(webview|onedrive|widgets|searchapp|searchui|securityhealth|svchost|conhost|dllhost|sihost|taskhostw|backgroundtaskhost|smartscreen|useroobe|phoneexperience|crossdevice|nvcontainer|nvidia|rtkaud|realtek|igfx|audiodg|wmiprvse|fontdrvhost|msedgeupdate|googleupdate|crashpad|^cmd\.exe|^powershell|^pythonw?\.exe|notice|helper\.exe|service\.exe|tray\.exe)/i;
+export const isGame=(n,c)=>{n=String(n||"").toLowerCase();if(!n||NOT_GAME.test(n))return false;return [...DEFAULT_GAMES,...(c.blockedGames||[]),...(c.allowedGames||[])].map(x=>String(x).toLowerCase()).includes(n)||GAME_RX.test(n)};
+const niceApp=n=>String(n||"").replace(/\.exe$/i,"");
+// o = {hideSite, hideApp, hideText}: anything the administrator hid from the parent is left out of the counts too.
+export function dailyStats(s,c,o){
+ const t0=dayStart(),tl=s.timeline||s.events||[],pg=new Map(),lau={},blk=[];
+ for(const e of tl){if(!(e.at>=t0))continue;const m=e.message||"",kind=e.kind||(/^Visited /.test(m)?"web":/^Blocked/.test(m)?"block":/^Application/.test(m)?"app":"sys");
+  if(kind==="web"){const k=nsite(e.d);if(k&&!o.hideSite(k))pg.set(k,(pg.get(k)||0)+1)}
+  else if(kind==="block"){if(!(e.d&&o.hideSite(e.d))&&!o.hideText(m))blk.push(e)}
+  else if(kind==="app"&&/^Application started/i.test(m)){const a=evInfo(e).app;if(a&&!o.hideApp(a))lau[a]=(lau[a]||0)+1}}
+ // the agent also reports the last visit times of every site; use whichever is larger so a long feed never under-counts
+ for(const x of s.sites||[]){if(x.g)continue;const k=nsite(x.d);if(!k||o.hideSite(k))continue;const n=(x.v||[]).filter(t=>t>=t0).length;if(n>(pg.get(k)||0))pg.set(k,n)}
+ // app minutes are reset by the agent at its own midnight; a report older than today's midnight is yesterday's data
+ const stale=s.day&&s.day!==dayStr()&&(+s.seen||0)<t0,am=stale?{}:mergeApps(s.apps),apps=[],games=[];
+ for(const n of new Set([...Object.keys(am),...Object.keys(lau)])){if(o.hideApp(n)||BG_APP.test(n))continue;const row=[n,am[n]||0,lau[n]||0];(isGame(n,c)?games:apps).push(row)}
+ const by=(x,y)=>(y[2]-x[2])||(y[1]-x[1]);apps.sort(by);games.sort(by);
+ const sites=[...pg.entries()].sort((a,b)=>b[1]-a[1]);
+ return {pages:sites.reduce((t,x)=>t+x[1],0),sites,apps,games,launches:Object.values(lau).reduce((t,x)=>t+x,0),blocked:blk.length}}
+export const humanMin=m=>{m=Math.round(m);if(m<1)return "less than a minute";const h=Math.floor(m/60),r=m%60;return (h?h+(h===1?" hour":" hours"):"")+(h&&r?" and ":"")+(r?r+(r===1?" minute":" minutes"):"")};
+
+// ---- read aloud with the most natural voice the device has ----
+// Browsers expose the voices installed on the device. "Natural"/"Neural" (Microsoft Edge), Google, Siri and Premium/Enhanced voices
+// sound like a person; old "Desktop"/eSpeak voices sound like a robot. We rank them and use the best one, or the one the viewer picked.
+const VKEY="pg-voice",vstore={get(){try{return localStorage.getItem(VKEY)||""}catch{return""}},set(v){try{localStorage.setItem(VKEY,v)}catch{}}};
+const vrank=v=>{const n=(v.name||"")+" "+(v.voiceURI||"");if(!/^en/i.test(v.lang||""))return -100;let s=0;
+ if(/natural|neural|online/i.test(n))s+=60;if(/premium|enhanced|siri/i.test(n))s+=45;if(/google/i.test(n))s+=30;
+ if(/samantha|serena|karen|moira|tessa|daniel|allison|susan|fiona|kate|oliver|ava\b/i.test(n))s+=20;
+ s+=({"en-NG":9,"en-GB":6,"en-US":5,"en-ZA":4,"en-GH":4}[String(v.lang).replace("_","-")]||0);
+ if(/espeak|compact|desktop|zira|david|mark\b|hazel|robot|fred|ralph|junior|albert|bad news|bells|boing|cellos|good news|organ|trinoids|whisper|wobble|zarvox|bubbles|deranged|hysterical/i.test(n))s-=60;
+ if(v.localService===false)s+=5;return s};
+const allVoices=()=>{try{return speechSynthesis.getVoices()}catch{return[]}};
+export const voiceList=()=>allVoices().filter(v=>/^en/i.test(v.lang||"")).map(v=>[vrank(v),v]).sort((a,b)=>b[0]-a[0]);
+const pickVoice=()=>{const L=voiceList(),want=vstore.get();return (want&&(L.find(x=>x[1].voiceURI===want)||[])[1])||(L[0]||[])[1]||null};
+export const setVoicePref=v=>vstore.set(v||"");
+export const canSpeak=()=>"speechSynthesis" in window&&"SpeechSynthesisUtterance" in window;
+const vname=v=>String(v.name).replace(/^Microsoft\s+/i,"").replace(/\s*Online\s*\(Natural\)/i," Natural").replace(/\s*-\s*English.*$/i,"")+" · "+String(v.lang).replace("_","-");
+// Fills a <select> with the best voices and shows a hint in `hint` when only basic voices exist.
+export function fillVoiceSelect(sel,hint){if(!sel)return;const L=voiceList(),cur=vstore.get();
+ sel.innerHTML='<option value="">Best voice (automatic)</option>'+L.slice(0,14).map(([,v])=>`<option value="${esc(v.voiceURI)}" ${v.voiceURI===cur?"selected":""}>${esc(vname(v))}</option>`).join("");
+ if(hint){const weak=!L.length||L[0][0]<40;hint.hidden=!weak;hint.textContent=weak?"This device only has basic voices. For a much more human voice, open ParentGuard in Microsoft Edge (free Natural voices), or install a Premium / Enhanced voice in the device's speech settings.":""}}
+export const onVoices=cb=>{if(!canSpeak())return;cb();try{speechSynthesis.addEventListener("voiceschanged",cb)}catch{}};
+let speakToken=0;
+export function stopSpeak(){speakToken++;try{speechSynthesis.cancel()}catch{}}
+// Reads text sentence by sentence with short natural pauses (long single utterances stop part-way in some browsers).
+export function speak(text,onEnd){
+ if(!canSpeak()){toast("Reading aloud is not supported in this browser. Try Microsoft Edge or Chrome.","bad");onEnd&&onEnd();return false}
+ stopSpeak();const my=speakToken,v=pickVoice(),parts=String(text).replace(/\s+/g," ").trim().match(/[^.!?]+[.!?]*/g)||[],chunks=[];
+ for(const p of parts){const l=chunks.length-1;if(l>=0&&chunks[l].length+p.length<160&&!/[.!?]\s*$/.test(chunks[l]))chunks[l]+=p;else chunks.push(p.trim())}
+ let i=0;const next=()=>{if(my!==speakToken)return;if(i>=chunks.length){onEnd&&onEnd();return}
+  const u=new SpeechSynthesisUtterance(chunks[i++]);if(v){u.voice=v;u.lang=v.lang}else u.lang="en-US";u.rate=.94;u.pitch=1;u.volume=1;
+  u.onend=()=>setTimeout(next,i<chunks.length?220:0);u.onerror=e=>{if(my!==speakToken||e.error==="interrupted"||e.error==="canceled")return;onEnd&&onEnd()};
+  try{speechSynthesis.speak(u)}catch{onEnd&&onEnd()}};
+ setTimeout(next,80);return true}
+
 // One child's dashboard. role 'admin' may lock sections from the parent. save(cfg, adminCfg|undefined).
 // Returned element has .refresh(newDoc) which updates live data without losing unsaved edits.
 export function panel(id,d,role,save){
  const adm=role==="admin",a=J(d.adminCfg);let c=J(d.cfg);
- if(adm)for(const k of ["apps","allowedApps","blockedGames","allowedGames","blockGames","sites","allowedSites","safeSearch","locationEnabled"])if(k in a)c[k]=a[k];
+ if(adm)for(const k of ["paused","bonus","unlockedUntil","overrideMode","apps","allowedApps","blockedGames","allowedGames","blockGames","sites","allowedSites","safeSearch","locationEnabled"])if(k in a)c[k]=a[k];
  const HTAB=()=>a.hide||[],isH=k=>!adm&&HTAB().includes(k),
   hidS=()=>a.hiddenSites||[],hidA=()=>a.hiddenApps||[],
   isHidSite=n=>{n=String(n||"").toLowerCase();return hidS().some(h=>n===h||n.endsWith("."+h))},isHidApp=n=>hidA().includes(String(n||"").toLowerCase()),
@@ -55,7 +124,15 @@ export function panel(id,d,role,save){
  const chipEd=k=>{const off=dis(k==="sites"||k==="allowedSites"?"sites":k.includes("ame")?"games":"apps");return `<div class=chips data-k=${k}>${w[k].map(x=>`<span class=chip>${esc(x)}${off?"":`<button type=button data-rm="${esc(x)}" aria-label="Remove ${esc(x)}">×</button>`}</span>`).join("")}${off?"":`<input data-add placeholder="Type and press Enter">`}</div>`};
  const tg=(f,t,s,on,k)=>`<label class=tg><input type=checkbox data-f=${f} ${on?"checked":""} ${dis(k)}><span class=sl></span><span class=tt><b>${t}</b><small>${s}</small></span></label>`;
  const flt=f=>f==="safe"?c.safeSearch!==false:!!c[f];
- const lockedNow=()=>!!c.paused||!!d.suspended;
+ const lockedNow=()=>{
+  if(d.suspended)return true;
+  const now=Date.now()/1000,until=Number(c.unlockedUntil||0),mode=String(c.overrideMode||"");
+  if(mode==="unlock"&&(!until||until>now))return false;
+  if(mode==="lock")return true;
+  if(until>now)return false; // legacy timed unlock
+  const status=J(d.status);
+  return !!c.paused||!!status.msg||!!status.lock;
+ };
  const calc=()=>{const s=J(d.status),on=online(s),wk=[0,6].includes(new Date().getDay()),base=wk?(c.limitWk??c.limit):c.limit,bonus=c.bonus&&c.bonus.day===s.day?+c.bonus.min:0,
   lim=base==null||isNaN(+base)?null:+base+bonus,us=s.usedSec!=null?+s.usedSec:(+s.used||0)*60,run=on&&!!s.active&&!lockedNow();
   return {s,on,lim,used:Math.floor(us/60),run,rem:lim==null?null:Math.max(0,lim*60-us-(run?Math.min(Math.max(Date.now()/1000-s.seen,0),30):0))}};
@@ -69,37 +146,50 @@ export function panel(id,d,role,save){
   if(s.childState==="no-user-session")return "⏸ Waiting: no Windows user is currently signed in.";
   return "⏸ Waiting: no active desktop session is detected.";};
  const head=()=>{const {s,on,lim,used,rem,run}=calc(),pct=lim?Math.min(100,(lim*60-(rem??0))/(lim*60)*100):0,lk=lockedNow(),
-  until=Number(c.unlockedUntil||0),unl=until>Date.now()/1000,
+  until=Number(c.unlockedUntil||0),unl=(c.overrideMode==="unlock"&&(!until||until>Date.now()/1000))||until>Date.now()/1000,
   ack=pending&&(Number(s.policyAppliedAt||0)>=pending-2)?(pending=null,"✓ Device confirmed the change"):pending?"Sent. Waiting for the device to confirm…":"";
-  const al=[];if(!s.seen)al.push("The agent has never reported. Finish installing it on the child's PC.");else if(!on)al.push("Device offline for "+ago(s.seen).replace(" ago","")+". Locks and changes apply when it reconnects.");
+  const al=[];if(s.removed)al.push("ParentGuard was removed from this device by the administrator.");else if(s.protection==="off")al.push("Parental control is stopped on this device by the administrator. Nothing is restricted or monitored until it is resumed.");if(!s.seen)al.push("The agent has never reported. Finish installing it on the child's PC.");else if(!on)al.push("Device offline for "+ago(s.seen).replace(" ago","")+". Locks and changes apply when it reconnects.");
   const pr=reqs.filter(r=>r.status==="pending").length;if(pr)al.unshift(pr+" pending request"+(pr>1?"s":"")+" from "+(d.name||"the child")+". Open the Requests tab to answer.");
-  if(on&&s.msg)al.push("Restriction active: "+s.msg);if(lim&&rem!=null&&rem>0&&rem<lim*6)al.push("Screen time almost used up.");
+  if(on&&s.msg)al.push("Restriction active: "+s.msg);if(on&&s.policySyncError)al.push("The agent could not fetch the latest website command: "+s.policySyncError);if(lim&&rem!=null&&rem>0&&rem<lim*6)al.push("Screen time almost used up.");
   return `${d.suspended?`<div class=banner style="margin:0 0 14px">⛔ This child is suspended by the administrator. The device stays locked.</div>`:""}
   <div class=timer><div class="tbox ${lk?"lk":""}"><small>${lk?"Device is locked":unl?"Temporarily unlocked":"Screen time left today"}</small>
    <div class=big data-timer>${lk?"Locked":rem==null?"No limit":clock(rem)}</div>
    <div class="pbar ${pct>90?"d":pct>70?"w":""}"><i data-bar style="width:${pct}%"></i></div>
-   <small>${used} min used${lim!=null?` of ${lim} min`:""}${unl?` · unlock ends ${when(until)}`:""}</small>
+   <small>${used} min used${lim!=null?` of ${lim} min`:""}${unl?(until?` · unlock ends ${when(until)}`:" · website override active"):""}</small>
    <div class=tstat>${stateLine(s,on,run,lk,rem)}</div></div>
   ${isH("control")?"":`<div class=lockbox><button class="lockbtn ${lk?"ok":"dg"}" data-q=${lk?"unlock":"lock"} ${dis("control")}>${lk?"🔓 Unlock device now":"🔒 Lock device now"}</button>
-   ${lk?`<select data-q=unlock-min ${dis("control")} aria-label="Unlock length"><option value=30>Unlock for 30 minutes</option><option value=60>Unlock for 1 hour</option><option value=120>Unlock for 2 hours</option><option value=0>Unlock until I lock again</option></select>`:`<div class=row><select data-q=extend-min ${dis("control")} aria-label="Extra time"><option value=15>+15 min</option><option value=30 selected>+30 min</option><option value=60>+1 hour</option><option value=120>+2 hours</option></select><button class=gr data-q=extend ${dis("control")}>Add screen time</button></div>`}
-   <span class=q role=status>${ack}</span>${lkt("control")}</div>`}</div>
+   ${lk?`<select data-q=unlock-min ${dis("control")} aria-label="Unlock length"><option value=30>Unlock for 30 minutes</option><option value=60>Unlock for 1 hour</option><option value=120>Unlock for 2 hours</option><option value=0>Unlock until I lock again (ignore schedules)</option></select>`:`<div class=row><select data-q=extend-min ${dis("control")} aria-label="Extra time"><option value=15>+15 min</option><option value=30 selected>+30 min</option><option value=60>+1 hour</option><option value=120>+2 hours</option></select><button class=gr data-q=extend ${dis("control")}>Add screen time</button></div>`}
+   <button class=gr data-q=resume ${dis("control")}>Resume normal schedule</button><span class=q role=status>${ack}</span>${lkt("control")}</div>`}</div>
   ${al.length?`<div class=alerts><b>Needs attention</b><ul>${al.map(x=>`<li>${esc(x)}</li>`).join("")}</ul></div>`:""}`};
- // Child's activity TODAY (local 00:00 to 23:59). Calculated live from the agent's report, never saved; a new day starts again at 0.
- const GAMEX=/steam|epicgames|roblox|minecraft|fortnite|valorant|riotclient|leagueclient|battle\.?net|eadesktop|ubisoft|uplay|upc\.exe|goggalaxy|genshin|pubg|cs2|csgo|dota2|gta|fifa|xbox|javaw/i;
- const todayTiles=()=>{const s=J(d.status),m0=new Date().setHours(0,0,0,0)/1000,tl=(s.timeline||s.events||[]).filter(e=>e.at>=m0),
-  bg=new Set((s.sites||[]).filter(x=>x.g&&!x.b).map(x=>nsite(x.d))),
-  pg=tl.filter(e=>e.d&&!/^Blocked/i.test(e.message||"")&&!bg.has(nsite(e.d))&&!hideSite(e.d)),
-  st=tl.filter(e=>/^Application started/i.test(e.message||"")&&evInfo(e).app&&!hideApp(evInfo(e).app)),
-  names=new Set([...st.map(e=>evInfo(e).app),...Object.keys(mergeApps(s.apps)).filter(n=>!hideApp(n))]),
-  gl=[...(c.blockedGames||[]),...(c.allowedGames||[])].map(x=>String(x).toLowerCase()),isG=n=>GAMEX.test(n)||gl.includes(n),
-  games=[...names].filter(isG),apps=[...names].filter(n=>!isG(n));
-  return `<div class=sec><b>Today</b><small>Midnight to 11:59 pm · starts again at 0 each day</small></div><div class=tiles><div class=t><small>Pages visited</small><b>${pg.length}</b></div><div class=t><small>Different sites</small><b>${new Set(pg.map(e=>nsite(e.d))).size}</b></div><div class=t><small>Apps used</small><b>${apps.length}</b></div><div class=t><small>Games played</small><b>${games.length}</b></div></div>`};
  const over=()=>{const {s,on,lim}=calc(),h=s.hist||{},ks=Object.keys(h).sort().slice(-7),mx=Math.max(lim||0,...ks.map(k=>h[k]),1),ap=Object.entries(mergeApps(s.apps)).filter(([n])=>!hideApp(n)).sort((x,y)=>y[1]-x[1]).slice(0,6),am=ap.length?ap[0][1]||1:1,dv=s.device||{},loc=s.location;
-  return `${isH("usage")?"":todayTiles()}<div class=tiles><div class=t><small>Connection</small><b class="${on?"on":"off"}">${on?"● Online":"○ Offline"}</b></div><div class=t><small>Last seen</small><b>${s.seen?ago(s.seen):"never"}</b></div><div class=t><small>Now</small><b>${on?(s.active?"User active":"No active desktop"):"—"}</b></div><div class=t><small>Computer</small><b>${esc(dv.computerName||"—")}</b></div></div>
+  return `<div class=tiles><div class=t><small>Connection</small><b class="${on?"on":"off"}">${on?"● Online":"○ Offline"}</b></div><div class=t><small>Last seen</small><b>${s.seen?ago(s.seen):"never"}</b></div><div class=t><small>Now</small><b>${on?(s.active?"User active":"No active desktop"):"—"}</b></div><div class=t><small>Computer</small><b>${esc(dv.computerName||"—")}</b></div></div>
   <div class=t style="margin-top:8px"><b>Windows users on this PC</b><div>${(s.activeUsers||[]).length?(s.activeUsers.map(esc).join(", ")+` <small>· active now</small>`):((s.accounts||[]).length?s.accounts.map(esc).join(", "):"No signed-in Windows user detected")}</div><small>Monitoring and device controls apply to every user account on this PC.</small></div>
   ${isH("usage")?"":`<div class=sec><b>Screen time, last days</b></div><div class=chart>${ks.map(k=>`<div class=col title="${k}: ${h[k]} min"><i style="height:${Math.round(h[k]/mx*100)}%"></i><small>${k.slice(5)}</small></div>`).join("")||"<small>No data yet</small>"}</div>
   <div class=sec><b>Top apps today</b></div>${ap.map(([n,m])=>`<div class=ar><span>${esc(n)}</span><span class=bar><i style="width:${Math.max(4,m/am*100)}%"></i></span><small>${Math.round(m)}m</small></div>`).join("")||"<small>None yet</small>"}`}
   ${isH("location")?"":`<div class=sec><b>Location</b></div><div class=t>${s.locationEnabled?(loc?`<a target=_blank rel=noopener href="https://maps.google.com/?q=${Number(loc.latitude)},${Number(loc.longitude)}">Open latest location in Maps</a><small>Accuracy ${Math.round(Number(loc.accuracy)||0)} m · ${esc(loc.capturedAt||"")}</small>`:"<span class=off>Precise location not available</span>"):"Location sharing is off"}${s.locationEnabled&&s.ipLocation?`<small>Approximate: ${esc([s.ipLocation.city,s.ipLocation.region,s.ipLocation.country].filter(Boolean).join(", ")||"unknown")}</small>`:""}</div>`}`};
+ // ---- "Today so far": pages, apps, games. Starts at 0 every midnight and never shows earlier days. ----
+ const dly=()=>dailyStats(J(d.status),c,{hideSite:hideSite,hideApp:hideApp,hideText:hideText});
+ const mn=m=>m<1?"under 1 min":Math.round(m)+" min",plural=(n,w)=>n+" "+w+(n===1?"":"s");
+ const leftTxt=()=>{const x=secToMidnight(),h=Math.floor(x/3600),m=Math.floor(x%3600/60);return h?h+" h "+m+" min":m+" min"};
+ const todayStats=()=>{const D=dly(),tiles=[],cols=[],more=(a,n)=>a.length>n?`<small class=foot>and ${a.length-n} more</small>`:"",none="<small>Nothing yet today</small>";
+  const stat=(cls,n,t,sub)=>`<div class="stat ${cls}"><b>${n}</b><span>${t}</span><small>${sub}</small></div>`;
+  if(!isH("visits")){tiles.push(stat("s-pages",D.pages,D.pages===1?"Page visited":"Pages visited",plural(D.sites.length,"different site")));
+   cols.push(`<div class=tdcol><h5>🌐 Sites today</h5>${D.sites.slice(0,6).map(([n,k])=>`<div class=tdrow><span>${esc(n)}</span><small>${plural(k,"visit")}</small></div>`).join("")||none}${more(D.sites,6)}</div>`)}
+  if(!isH("apps")){tiles.push(stat("s-apps",D.apps.length,D.apps.length===1?"App used":"Apps used",(L=>L?L+(L===1?" launch":" launches")+" today":"programs running today")(D.apps.reduce((t,a)=>t+a[2],0))),stat("s-games",D.games.length,D.games.length===1?"Game played":"Games played",D.games.length?"see list below":"none today"));
+   const line=([n,m,k])=>`<div class=tdrow><span>${esc(niceApp(n))}</span><small>${m?mn(m):"opened"}${k>1?" · "+k+"×":""}</small></div>`;
+   cols.push(`<div class=tdcol><h5>🧩 Apps today</h5>${D.apps.slice(0,6).map(line).join("")||none}${more(D.apps,6)}</div>`,`<div class=tdcol><h5>🎮 Games today</h5>${D.games.slice(0,6).map(line).join("")||none}${more(D.games,6)}</div>`)}
+  if(!isH("web"))tiles.push(stat("s-block",D.blocked,D.blocked===1?"Blocked attempt":"Blocked attempts",D.blocked?"stopped by the filter":"all clear"));
+  return tiles.length?`<div class=stats>${tiles.join("")}</div><div class=tdgrid>${cols.join("")}</div>`:`<div class=empty>The administrator has hidden these counters.</div>`};
+ const todayCard=()=>`<div class=today><div class=todayhead><div><h4>Today so far</h4><small data-tmeta></small></div><div class=speakbar>${canSpeak()?`<button type=button class=speakbtn data-speak>🔊 Read aloud</button><select data-voice aria-label="Reading voice"></select>`:""}</div></div><div data-tstats></div><div class=voicehint data-vhint hidden></div><small class=foot>Counted from 12:00 am to 11:59 pm. Pages come from the browser history the agent reads (the same site opened again within 2 minutes counts once). Apps are programs running on the PC; background helpers are left out.</small></div>`;
+ const summaryText=()=>{const {s,on,lim,used}=calc(),D=dly(),nm=d.name||"your child",p=[`Here is ${nm}'s day so far.`];
+  if(!isH("visits"))p.push(D.pages?`${nm} has visited ${plural(D.pages,"page")} on ${plural(D.sites.length,"site")} today.`:`${nm} has not visited any websites today.`);
+  if(!isH("apps")){p.push(D.apps.length?`${plural(D.apps.length,"app")} used today${D.apps.length>1?", most of all "+niceApp(D.apps[0][0]):", which is "+niceApp(D.apps[0][0])}.`:"No apps used so far.");
+   p.push(D.games.length?`${plural(D.games.length,"game")} played today: ${D.games.slice(0,3).map(g=>niceApp(g[0])).join(", ")}.`:"No games played so far.")}
+  if(!isH("web")&&D.blocked)p.push(`${plural(D.blocked,"blocked attempt")} were stopped by the filter.`.replace("1 blocked attempt were","1 blocked attempt was"));
+  if(!isH("usage"))p.push(`Screen time used is ${humanMin(used)}${lim!=null?" out of "+humanMin(lim):""}.`);
+  p.push(lockedNow()?"The device is locked right now.":on?"The device is online.":"The device is offline.");
+  const pr=reqs.filter(r=>r.status==="pending").length;if(pr)p.push(`${plural(pr,"request")} from ${nm} ${pr===1?"is":"are"} waiting for your answer.`);
+  return p.join(" ").replace(/\.exe\b/gi,"").replace(/([a-z0-9-]+)\.(com|net|org|ng|io|tv|co)\b/gi,"$1 dot $2")};
  const ICON={web:"🌐",block:"⛔",app:"🧩",screen:"⏱️",user:"👤",sys:"⚙️"};
  const dayName=t=>{const d=new Date(t*1000),n=new Date(),k=Math.round((new Date(n.getFullYear(),n.getMonth(),n.getDate())-new Date(d.getFullYear(),d.getMonth(),d.getDate()))/864e5);return k===0?"Today":k===1?"Yesterday":d.toLocaleDateString([],{weekday:"long",month:"short",day:"numeric"})};
  // One row per site/app: name on the left, Block / Allow / Hide actions on the SAME row.
@@ -172,7 +262,7 @@ export function panel(id,d,role,save){
   <div class=sec><b>Hidden apps</b></div><div class=hl>${hidA().map(n=>`<span class=chip>${esc(n)}<button type=button data-act=unhide data-kind=app data-n="${esc(n)}" aria-label="Unhide">×</button></span>`).join("")||"<small>None</small>"}</div></div>`;
  const body=()=>`<div class=tabs role=tablist>${[["over","Overview"],["req","Requests"],["live","Live timeline"],["visits","Sites visited"],["web","Website rules"],["apps","Apps & games"],["time","Schedule"],...(adm?[["pview","Parent view"]]:[])].filter(([k])=>!isH(k)).map(([k,t])=>`<button class="${k===tab?"act":""}" data-tab=${k} role=tab>${t}${k==="req"?`<span class=bdg data-reqbadge ${reqs.some(r=>r.status==="pending")?"":"hidden"}>${reqs.filter(r=>r.status==="pending").length||""}</span>`:""}</button>`).join("")}</div>
  ${adm?pview():""}${isH("req")?"":`<div class=pane data-p=req ${tab!=="req"?"hidden":""}><div class=sec><b>Requests from the child</b><small>Newest first</small></div><div class=reqs>${reqList()}</div></div>`}
- <div class=pane data-p=over ${tab!=="over"?"hidden":""}><div class=ov>${over()}</div></div>
+ <div class=pane data-p=over ${tab!=="over"?"hidden":""}>${todayCard()}<div class=ov>${over()}</div></div>
  <div class=pane data-p=web ${tab!=="web"?"hidden":""}>
   <div class=sec><b>Blocked attempts</b><small>Newest first</small></div><div class=hits>${sitesLog()}</div>
   <div class=sec><b>Age profile</b>${lkt("adult")}</div><div class=seg>${[["child","Child · under 13"],["teen","Teen · 13 to 17"],["custom","Custom"]].map(([k,t])=>`<button type=button data-age=${k} class="${(c.ageGroup||"custom")===k?"act":""}" ${dis("adult")}>${t}</button>`).join("")}</div>
@@ -200,13 +290,16 @@ export function panel(id,d,role,save){
  if(!adm&&isH(tab))tab=["over","req","live","visits","web","apps","time"].find(k=>!isH(k))||"over";
  const drawHead=()=>{H.innerHTML=head()};drawHead();$("[data-b]").innerHTML=body();
  const drawLists=()=>{$(".tl").innerHTML=timeline();$(".vl").innerHTML=visits();$(".al").innerHTML=appsUsed();const h=el.querySelector("[data-p=pview]");if(h){const t=tab;h.outerHTML=pview();el.querySelector("[data-p=pview]").hidden=t!=="pview"}};
- const refreshLive=()=>{const wm=$("[data-wm]");if(wm)wm.innerHTML=webMon();drawHead();$(".ov").innerHTML=over();$(".hits").innerHTML=sitesLog();$(".tl").innerHTML=timeline();$(".vl").innerHTML=visits();$(".al").innerHTML=appsUsed()};
- const tick=()=>{if(!el.isConnected){clearInterval(t);if(unsubR){unsubR();unsubR=null}return}const {rem,lim}=calc(),tm=$("[data-timer]");if(tm&&!lockedNow()&&rem!=null){tm.textContent=clock(rem);const b=$("[data-bar]");if(b)b.style.width=Math.min(100,(lim*60-rem)/(lim*60)*100)+"%"}};
+ const drawToday=()=>{const ts=$("[data-tstats]");if(ts)ts.innerHTML=todayStats();const tm=$("[data-tmeta]");if(tm)tm.textContent="Starts again at midnight, in "+leftTxt()};
+ const refreshLive=()=>{drawToday();const wm=$("[data-wm]");if(wm)wm.innerHTML=webMon();drawHead();$(".ov").innerHTML=over();$(".hits").innerHTML=sitesLog();$(".tl").innerHTML=timeline();$(".vl").innerHTML=visits();$(".al").innerHTML=appsUsed()};
+ let talking=false,lastDay=dayStr();drawToday();
+ onVoices(()=>fillVoiceSelect($("[data-voice]"),$("[data-vhint]")));
+ const tick=()=>{if(!el.isConnected){clearInterval(t);if(talking)stopSpeak();if(unsubR){unsubR();unsubR=null}return}if(lastDay!==dayStr()){lastDay=dayStr();refreshLive()}const {rem,lim}=calc(),tm=$("[data-timer]");if(tm&&!lockedNow()&&rem!=null){tm.textContent=clock(rem);const b=$("[data-bar]");if(b)b.style.width=Math.min(100,(lim*60-rem)/(lim*60)*100)+"%"}};
  const t=setInterval(tick,1000),t2=setInterval(()=>{if(el.isConnected)refreshLive();else{clearInterval(t2);if(unsubR){unsubR();unsubR=null}}},30000);
  const drawReqs=()=>{const l=el.querySelector(".reqs");if(l)l.innerHTML=reqList();const bd=el.querySelector("[data-reqbadge]"),n=reqs.filter(r=>r.status==="pending").length;if(bd){bd.textContent=n||"";bd.hidden=!n}drawHead()};
  try{unsubR=F.onSnapshot(F.query(F.collection(db,"devices",id,"requests"),F.orderBy("createdAt","desc"),F.limit(30)),sn=>{reqs=sn.docs.map(x=>({id:x.id,...x.data()}));drawReqs()},()=>{})}catch{}
- el.refresh=nd=>{if(nd){d=nd;const n=J(d.cfg);for(const k of ["paused","unlockedUntil","bonus"])c[k]=n[k]}refreshLive()};
- const commitNow=async nc=>{c=nc;pending=Math.floor(Date.now()/1000);await withTimeout(save(nc,adm?{...a,paused:nc.paused,bonus:nc.bonus,unlockedUntil:nc.unlockedUntil,locked:L}:undefined));drawHead()};
+ el.refresh=nd=>{if(nd){d=nd;const n=J(d.cfg);for(const k of ["paused","unlockedUntil","overrideMode","bonus"])c[k]=n[k]}refreshLive()};
+ const commitNow=async nc=>{c=nc;pending=Math.floor(Date.now()/1000);await withTimeout(save(nc,adm?{...a,paused:nc.paused,bonus:nc.bonus,unlockedUntil:nc.unlockedUntil,overrideMode:nc.overrideMode,locked:L}:undefined));drawHead()};
  const commit=(nc,btn)=>busy(btn,"Sending…",async()=>{try{await commitNow(nc);toast("Sent to the device. Waiting for it to confirm…","ok")}catch(e){pending=null;drawHead();const q=$(".q");if(q)q.textContent="Failed: "+(e.code||e.message);toast("Could not send: "+(e.code||e.message),"bad")}});
  const collect=()=>{const v=s=>$(`[data-f="${s}"]`),ck=s=>v(s).checked,n={...c,...w};
   Object.assign(n,{blockGames:ck("bg"),browsers:BR.filter(b=>ck("br-"+b)),safeSearch:ck("safe"),adult:ck("adult"),gambling:ck("gambling"),social:ck("social"),proxy:ck("proxy"),locationEnabled:ck("loc"),limit:+v("li").value,limitWk:+v("lw").value,start:v("st").value,end:v("en").value});return n};
@@ -217,12 +310,14 @@ export function panel(id,d,role,save){
   try{await saveAll();m.className="m okm";m.textContent="✓ Saved. The device will pick this up shortly.";toast("Settings saved ✓","ok")}
   catch(err){m.className="m badm";m.textContent="✗ Not saved: "+(err.code||err.message);toast("Could not save: "+(err.code||err.message),"bad");throw err}},"Saved").catch(()=>{});
  const answer=(r,yes,btn)=>busy(btn,yes?"Approving…":"Declining…",async()=>{try{
-   if(yes&&r.type==="time"){const now=Math.floor(Date.now()/1000);await commitNow({...c,paused:false,unlockedUntil:Math.max(Number(c.unlockedUntil||0),now)+(Number(r.minutes)||30)*60})}
+   if(yes&&r.type==="time"){const now=Math.floor(Date.now()/1000);await commitNow({...c,paused:false,overrideMode:"unlock",unlockedUntil:Math.max(Number(c.unlockedUntil||0),now)+(Number(r.minutes)||30)*60})}
    else if(yes&&(r.type==="site"||r.type==="app")){const al=r.type==="site"?"allowedSites":"allowedApps",bl=r.type==="site"?"sites":"apps";w[al]=[...new Set([...w[al],r.target])];w[bl]=w[bl].filter(x=>x!==r.target);await saveAll()}
    await withTimeout(F.updateDoc(F.doc(db,"devices",id,"requests",r.id),{status:yes?(r.type==="message"?"seen":"approved"):"denied",decidedAt:Math.floor(Date.now()/1000),decidedBy:role}));
    toast(yes?(r.type==="message"?"Marked as read":"Approved. The device applies it within seconds."):"Request declined","ok")}
   catch(e){toast("Could not "+(yes?"approve":"decline")+": "+(e.code||e.message),"bad")}});
  el.addEventListener("click",e=>{const b=e.target.closest("button");if(!b)return;
+  if(b.dataset.speak!==undefined){const idle=()=>{talking=false;b.classList.remove("playing");b.innerHTML="🔊 Read aloud"};
+   if(talking){stopSpeak();idle();return}talking=true;b.classList.add("playing");b.innerHTML="⏹ Stop reading";if(!speak(summaryText(),idle))idle();return}
   if(b.dataset.tab){tab=b.dataset.tab;el.querySelectorAll("[data-tab]").forEach(x=>x.classList.toggle("act",x===b));el.querySelectorAll("[data-p]").forEach(p=>p.hidden=p.dataset.p!==tab);return}
   if(b.dataset.rm!==undefined){const k=b.closest(".chips").dataset.k;w[k]=w[k].filter(x=>x!==b.dataset.rm);redrawChips(k);return}
   if(b.dataset.age){const g=b.dataset.age;el.querySelectorAll("[data-age]").forEach(x=>x.classList.toggle("act",x===b));c.ageGroup=g;const p=PRESETS[g];if(p)for(const[f,v]of Object.entries(p)){const i=$(`[data-f="${f==="safeSearch"?"safe":f}"]`);if(i)i.checked=v}return}
@@ -240,12 +335,14 @@ export function panel(id,d,role,save){
    if(act==="block"){ad(bk,n);rm(ak,n)}else if(act==="unblock")rm(bk,n);else if(act==="allow"){ad(ak,n);rm(bk,n)}else if(act==="unallow")rm(ak,n);
    drawLists();redrawChips(bk);redrawChips(ak);doSave().then(drawLists);return}
   if(b.dataset.rq){const r=reqs.find(x=>x.id===b.dataset.id);if(r)answer(r,b.dataset.rq==="yes",b);return}
-  const q=b.dataset.q;if(q==="lock")commit({...c,paused:true,unlockedUntil:0},b);
-  else if(q==="unlock"){const m=Number($("[data-q=unlock-min]").value);commit({...c,paused:false,unlockedUntil:m?Math.floor(Date.now()/1000)+m*60:Math.floor(Date.now()/1000)+86400*30},b)}
-  else if(q==="extend"){const m=Number($("[data-q=extend-min]").value)||30,day=J(d.status).day||new Date().toLocaleDateString("sv"),p=c.bonus&&c.bonus.day===day?+c.bonus.min:0;commit({...c,bonus:{day,min:p+m}},b)}
+  const q=b.dataset.q;if(q==="lock")commit({...c,paused:true,overrideMode:"lock",unlockedUntil:0},b);
+  else if(q==="unlock"){const m=Number($("[data-q=unlock-min]").value);commit({...c,paused:false,overrideMode:"unlock",unlockedUntil:m?Math.floor(Date.now()/1000)+m*60:0},b)}
+  else if(q==="resume")commit({...c,paused:false,overrideMode:"schedule",unlockedUntil:0},b);
+  else if(q==="extend"){const m=Number($("[data-q=extend-min]").value)||30,st0=J(d.status),fresh0=st0.seen&&Date.now()/1000-st0.seen<300,day=(fresh0&&st0.day)||new Date().toLocaleDateString("sv"),p=c.bonus&&c.bonus.day===day?+c.bonus.min:0;commit({...c,bonus:{day,min:p+m}},b)}
   else if(q==="save")doSave()});
  el.addEventListener("input",e=>{if(e.target.dataset.vq!==undefined){vq=e.target.value;$(".vl").innerHTML=visits()}});
- el.addEventListener("change",e=>{if(e.target.dataset.hv){a.hide=[...el.querySelectorAll("[data-hv]:checked")].map(x=>x.dataset.hv);withTimeout(save(c,{...a,locked:[...el.querySelectorAll("[data-l]:checked")].map(x=>x.dataset.l)})).then(()=>toast("Parent view updated ✓","ok"),err=>toast("Could not save: "+(err.code||err.message),"bad"));return}
+ el.addEventListener("change",e=>{if(e.target.dataset.voice!==undefined){setVoicePref(e.target.value);if(talking){stopSpeak();talking=false;const sb=$("[data-speak]");if(sb){sb.classList.remove("playing");sb.innerHTML="🔊 Read aloud"}}toast("Voice changed. Press Read aloud to hear it.","ok");return}
+  if(e.target.dataset.hv){a.hide=[...el.querySelectorAll("[data-hv]:checked")].map(x=>x.dataset.hv);withTimeout(save(c,{...a,locked:[...el.querySelectorAll("[data-l]:checked")].map(x=>x.dataset.l)})).then(()=>toast("Parent view updated ✓","ok"),err=>toast("Could not save: "+(err.code||err.message),"bad"));return}
   if(e.target.dataset.bg!==undefined){showBg=e.target.checked;$(".vl").innerHTML=visits()}});
  el.addEventListener("toggle",e=>{const dm=e.target.dataset&&e.target.dataset.d;if(dm){e.target.open?open.add(dm):open.delete(dm)}},true);
  el.addEventListener("keydown",e=>{if(e.key==="Enter"&&(e.target.dataset.newsite!==undefined||e.target.dataset.newapp!==undefined)){e.preventDefault();e.target.closest(".addbar").querySelector("[data-addblock]").click();return}
