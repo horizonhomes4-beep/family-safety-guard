@@ -1,0 +1,88 @@
+FAMILY SAFETY GUARD
+Installation for your child's laptop
+============================================================
+
+This package was made ONLY for ONE child's laptop (the one the
+person who sent it to you told you about).
+Please do not install it on any other computer.
+
+You do not need any computer knowledge. Just follow the steps.
+It takes about 10 minutes.
+
+
+BEFORE YOU START
+------------------------------------------------------------
+* Use the child's laptop and connect it to the internet.
+* Be signed in to the laptop with the PARENT (owner) account,
+  not the child's account. Windows may ask for this account's
+  password during installation.
+* Tip: the child's own Windows account should be a "Standard"
+  account. If it is an "Administrator" account, a child can
+  switch the protection off. To check:
+  Settings > Accounts > Family & other users > click the child's
+  account > Change account type > choose "Standard User".
+
+
+STEP 1 - EXTRACT (UNZIP) THE FOLDER
+------------------------------------------------------------
+Right-click the ZIP file you received and choose "Extract All...",
+then click "Extract".
+
+IMPORTANT: Do not run anything from inside the ZIP window.
+Always extract first. A new normal folder will appear.
+
+
+STEP 2 - INSTALL
+------------------------------------------------------------
+Open the new folder. Double-click the file called:
+
+      2 - DOUBLE-CLICK TO INSTALL
+
+(It may show as "2 - DOUBLE-CLICK TO INSTALL.bat".)
+
+* If a blue box says "Windows protected your PC":
+  click "More info", then click "Run anyway".
+* When Windows asks "Do you want to allow this app to make
+  changes to your device?" click YES.
+* A black window will open and show many lines of text.
+  This is normal. Wait. It can take 5 to 10 minutes and may
+  look frozen for a while. Do NOT close it and do NOT turn off
+  the laptop.
+
+
+STEP 3 - CHECK THE RESULT
+------------------------------------------------------------
+* GREEN window saying SUCCESS: it worked. Press any key.
+* RED window: it did not work. Take a photo of the screen and
+  send it to the person who sent you this package.
+
+
+STEP 4 - TELL US
+------------------------------------------------------------
+Send a short message to the person who sent you this package:
+"It is installed." They will confirm that the laptop is
+connected.
+
+
+STEP 5 - CLEAN UP (important)
+------------------------------------------------------------
+Delete the ZIP file and this whole folder, then empty the
+Recycle Bin. This package contains a private code for this
+laptop. Do not share it or keep it where others can find it.
+You do not need it any more.
+
+
+IF SOMETHING GOES WRONG
+------------------------------------------------------------
+* Nothing happens, or a message says files are missing:
+  you probably did not extract the ZIP first. Go back to Step 1.
+* Your antivirus shows a warning: do not click around. Take a
+  photo of the warning and send it to us before continuing.
+* The black window shows red text: send us a photo of it.
+
+
+TO REMOVE THE PROGRAM LATER
+------------------------------------------------------------
+Settings > Apps > Installed apps (or "Apps & features"),
+find "@M Family Safety Guard", click Uninstall.
+(Only an administrator account can do this.)

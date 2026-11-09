@@ -1,0 +1,33 @@
+rules_version='2';
+service cloud.firestore{match /databases/{db}/documents{
+ function ok(){return request.auth!=null;}
+ function admin(){return ok()&&exists(/databases/$(db)/documents/admins/$(request.auth.uid));}
+ function parentOf(p){return ok()&&p is string&&p!=""&&exists(/databases/$(db)/documents/parents/$(p))
+  &&((get(/databases/$(db)/documents/parents/$(p)).data.uid==request.auth.uid&&request.auth.token.firebase.sign_in_provider=='password')
+  ||(exists(/databases/$(db)/documents/parents/$(p)/sessions/$(request.auth.uid))
+  &&get(/databases/$(db)/documents/parents/$(p)/sessions/$(request.auth.uid)).data.token==get(/databases/$(db)/documents/parents/$(p)).data.token));}
+ // A child may have several parents (parentIds); the old single parentId is still honoured.
+ function parentOfDev(r){return ok()&&((r.data.get('parentIds',[]).hasAny([request.auth.uid])&&parentOf(request.auth.uid))||parentOf(r.data.get('parentId','')));}
+ function agentOf(d){return ok()&&exists(/databases/$(db)/documents/devices/$(d)/agents/$(request.auth.uid));}
+ function only(k){return request.resource.data.diff(resource.data).affectedKeys().hasOnly(k);}
+ function pw(){return ok()&&request.auth.token.firebase.sign_in_provider=='password';}
+ function fresh(){return !exists(/databases/$(db)/documents/meta/setup);}
+ match /meta/setup{allow read:if false;allow create:if pw()&&fresh()&&request.resource.data.keys().hasOnly(['uid'])&&request.resource.data.uid==request.auth.uid;}
+ match /admins/{u}{allow read:if ok()&&request.auth.uid==u;allow create:if pw()&&request.auth.uid==u&&fresh();}
+ match /deviceKeys/{d}{allow read,write:if admin();}
+ match /parents/{p}{
+  allow read,write:if admin();
+  allow get:if parentOf(p);
+  match /sessions/{u}{
+   allow read,delete:if admin()||(ok()&&request.auth.uid==u);
+   allow create,update:if ok()&&request.auth.uid==u&&request.resource.data.keys().hasOnly(['token'])
+    &&request.resource.data.token==get(/databases/$(db)/documents/parents/$(p)).data.token;}}
+ match /devices/{d}{
+  allow read,write:if admin();
+  allow get,list:if parentOfDev(resource)||agentOf(d);
+  allow update:if parentOfDev(resource)&&only(['cfg']);
+  allow update:if agentOf(d)&&only(['status']);
+  match /agents/{u}{
+   allow read,write:if admin();
+   allow create:if ok()&&request.auth.uid==u&&request.resource.data.key==get(/databases/$(db)/documents/deviceKeys/$(d)).data.key;}}
+}}

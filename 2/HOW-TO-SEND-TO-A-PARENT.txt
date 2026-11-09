@@ -1,0 +1,57 @@
+HOW TO PREPARE AND SEND A PACKAGE TO A PARENT   (administrator only)
+====================================================================
+
+The ONLY folder a parent receives is:  parent-package-template
+Each copy you send is for ONE child laptop.
+
+
+ONCE PER CHILD LAPTOP  (about 2 minutes)
+--------------------------------------------------------------------
+1. Copy the folder  parent-package-template  and rename the copy,
+   for example  FamilySafetyGuard-Amara
+2. In the Admin dashboard open the child and click
+   "Copy config.json".
+3. Open this file in Notepad:
+      FamilySafetyGuard-Amara\program-DO-NOT-OPEN\config.json
+   Select everything (Ctrl+A), paste (Ctrl+V), save.
+   It must show real values, not PASTE_FROM_ADMIN.
+4. Right-click the folder > Send to > Compressed (zipped) folder.
+5. Send that ZIP to the parent PRIVATELY:
+      - Google Drive / OneDrive link set to "Restricted", or
+      - WhatsApp / Telegram as a document.
+   Gmail and Outlook often block ZIPs that contain .bat files.
+   The ZIP contains this child's secret key: never post it
+   publicly and never reuse it for a second laptop.
+6. Message to the parent (edit as you like):
+
+   "Hello! Please install the family safety program on [NAME]'s
+    laptop. Use the parent/owner account, connect to the internet,
+    unzip the file I sent, open the folder and read
+    '1 - READ ME FIRST'. It takes about 10 minutes. Message me
+    when you see the green SUCCESS screen."
+
+7. When the parent says it is finished, confirm in the Admin
+   dashboard that the device shows ONLINE.
+
+IMPORTANT: always keep parent-package-template itself with the
+PASTE_FROM_ADMIN placeholder. Only paste a real config into a COPY.
+
+
+OPTIONAL SHORTCUT
+--------------------------------------------------------------------
+Double-click 1-MAKE-PARENT-PACKAGE.bat. It reads the copied
+config.json from the clipboard and builds the ZIP for you in
+READY-TO-SEND. Same result as steps 1-4 above.
+
+
+IF SOMETHING CHANGES LATER
+--------------------------------------------------------------------
+* ZIP lost or sent to the wrong person:
+  Dashboard > child > "New device key". The old key stops working.
+  Then prepare a new package.
+* New program version: send a new package. Installing over an
+  existing installation upgrades it in place.
+* Parent cannot finish the install: ask for a photo of the red
+  screen. The installer undoes its own changes when it fails.
+* Two children on ONE laptop: one package is enough (all Windows
+  users on that laptop are covered by the same device).

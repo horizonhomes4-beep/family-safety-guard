@@ -1,0 +1,15 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>ParentGuard</title><link rel="stylesheet" href="style.css"></head>
+<body><main class="shell landing">
+<header class="hero"><div class="brand">🛡️ ParentGuard</div><p>See how your child's day on the PC is going, and keep it safe.</p></header>
+<section class="c"><h2>Parent sign in</h2><p>Use the email and password your administrator gave you.</p>
+<div class="choice"><a class="b lg" id="main" href="parent.html">Sign in as a parent</a></div></section>
+<p class="muted">ParentGuard for Windows 10/11 child devices. Device enforcement requires installation of the Windows agent.</p></main>
+<script type="module">
+// The landing page never advertises the administrator pages. They are shown only to someone who is already signed in as an administrator.
+import {auth,A,roleOf} from './common.js';
+A.onAuthStateChanged(auth,async u=>{const r=await roleOf(u),m=document.getElementById('main'),box=m.parentElement;
+ box.querySelector('[data-adm]')?.remove();
+ if(r==='parent')m.textContent='Open my dashboard';else m.textContent='Sign in as a parent';
+ if(r==='admin'){const a=document.createElement('a');a.className='b gr lg';a.href='admin.html';a.dataset.adm='1';a.textContent='Open administrator page';box.append(a)}});
+</script></body></html>

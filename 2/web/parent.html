@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Parent dashboard · ParentGuard</title><link rel="stylesheet" href="style.css"></head>
+<body><main class="shell"><div class="top"><h1><span class="brandmark">🛡️</span>ParentGuard</h1><div id="who"></div></div><div id="app"><div class="c">Connecting to Firebase…</div></div></main>
+<script type="module">
+import {auth,db,A,F,panel,esc,online,J,busy,speak,stopSpeak,canSpeak} from './common.js';
+const app=document.getElementById('app'),who=document.getElementById('who');let unsubs=[];
+const stop=()=>{unsubs.forEach(u=>u());unsubs=[];stopSpeak()};
+function login(message=''){stop();who.innerHTML='';
+ app.innerHTML=`<section class="c login"><h2>Welcome back</h2><p class="lead">Sign in to see how your children's day is going.</p>${message?`<p class="off">${esc(message)}</p>`:''}<label for="e">Email address</label><input id="e" type="email" autocomplete="username"><label for="p">Password</label><input id="p" type="password" autocomplete="current-password"><button id="go" class="lg">Sign in</button><p id="m" role="status"></p><p><a href="index.html">Home</a></p></section>`;
+ const e=document.getElementById('e'),p=document.getElementById('p'),b=document.getElementById('go'),m=document.getElementById('m');
+ const go=()=>busy(b,'Signing in…',async()=>{m.className='';m.textContent='';try{await A.signInWithEmailAndPassword(auth,e.value.trim(),p.value)}catch(x){m.className='off';m.textContent=x.code||x.message}});
+ b.onclick=go;p.addEventListener('keydown',x=>{if(x.key==='Enter')go()});}
+// ---- welcome greeting (this page only) ----
+const part=()=>{const h=new Date().getHours();return h<12?'Good morning':h<17?'Good afternoon':'Good evening'};
+const first=n=>{const w=String(n||'').trim().split(/\s+/)[0]||'';return w?w[0].toUpperCase()+w.slice(1):'there'};
+const kidsLine=list=>{if(!list.length)return 'No children are linked to your account yet.';
+ const on=list.filter(d=>online(J(d.data().status)));const n=list.length,names=a=>a.map(d=>d.data().name||'Your child');
+ const nm=names(on);const who2=nm.length>2?nm.slice(0,-1).join(', ')+' and '+nm[nm.length-1]:nm.join(' and ');
+ return `${n===1?'1 child is':n+' children are'} linked to your account. `+(on.length?`${who2} ${on.length===1?'is':'are'} online now.`:'None of them is online right now.')};
+function greetBox(name){const el=document.createElement('section');el.className='greet';el.id='greet';
+ el.innerHTML=`<div><h2 data-gh></h2><p data-gp></p><div class="pills"><span class="pill" data-gd></span></div></div>${canSpeak()?'<button type="button" class="gbtn" data-gs>🔊 Hear greeting</button>':''}`;
+ const q=s=>el.querySelector(s);let line='',talking=false;
+ const paint=()=>{q('[data-gh]').textContent=`${part()}, ${first(name)}`;q('[data-gd]').textContent=new Date().toLocaleDateString([],{weekday:'long',day:'numeric',month:'long'});q('[data-gp]').textContent='Welcome back to ParentGuard. '+line};
+ el.setLine=l=>{line=l;paint()};paint();
+ const t=setInterval(()=>{if(!el.isConnected){clearInterval(t);return}paint()},60000);
+ const gs=q('[data-gs]');if(gs)gs.onclick=()=>{const idle=()=>{talking=false;gs.textContent='🔊 Hear greeting'};if(talking){stopSpeak();idle();return}talking=true;gs.textContent='⏹ Stop';if(!speak(`${part()}, ${first(name)}. ${q('[data-gp]').textContent}`,idle))idle()};
+ return el}
+A.onAuthStateChanged(auth,async user=>{
+ stop();if(!user||user.isAnonymous){login();return;}
+ app.innerHTML='<div class="c">Checking parent account…</div>';
+ try{
+  const prof=await F.getDoc(F.doc(db,'parents',user.uid));
+  if(!prof.exists()||prof.data().uid!==user.uid){await A.signOut(auth);login('This account is not a ParentGuard parent. Contact your administrator.');return;}
+  who.innerHTML=`<small>${esc(prof.data().name||user.email)}</small> <button id="out" class="gr">Sign out</button>`;document.getElementById('out').onclick=()=>A.signOut(auth);
+  app.innerHTML='<div id="greetHere"></div><section class="c" id="kidsBox" hidden></section><div id="one"></div>';
+  const gr=greetBox(prof.data().name||user.email);document.getElementById('greetHere').append(gr);
+  const box=document.getElementById('kidsBox'),one=document.getElementById('one');
+  let docs=new Map(),sel=null,el=null,sig='';
+  const draw=()=>{const list=[...docs.values()];gr.setLine(kidsLine(list));
+   if(!list.length){box.hidden=true;one.innerHTML='<section class="c empty">No children are linked to your account yet. Please contact your administrator.</section>';el=null;return;}
+   if(!sel||!docs.has(sel))sel=list[0].id;
+   box.hidden=list.length<2;
+   box.innerHTML='<h2>Choose a child</h2><div class="kids">'+list.map(d=>{const x=d.data(),on=online(J(x.status));return `<button class="kid ${d.id===sel?'act':''}" data-k="${d.id}"><span class="av">${esc((x.name||'?')[0].toUpperCase())}<i class="${on?'on':''}"></i></span><span>${esc(x.name||'Child')}<small>${x.suspended?'Suspended':on?'Online':'Offline'}</small></span></button>`}).join('')+'</div>';
+   box.querySelectorAll('[data-k]').forEach(b=>b.onclick=()=>{sel=b.dataset.k;sig='';draw();});
+   const doc=docs.get(sel),data=doc.data(),s=JSON.stringify([doc.id,data.name,data.adminCfg,data.suspended]);
+   if(s!==sig||!el){sig=s;el=panel(doc.id,data,'parent',cfg=>F.updateDoc(doc.ref,{cfg:JSON.stringify(cfg)}));one.replaceChildren(el);}else el.refresh(data);};
+  const listen=q=>F.onSnapshot(q,snap=>{snap.docChanges().forEach(c=>c.type==='removed'?docs.delete(c.doc.id):docs.set(c.doc.id,c.doc));draw();},e=>{one.innerHTML='<section class="c off">Could not load your children: '+esc(e.code||e.message)+'</section>';});
+  // children linked through parentIds (new) and the legacy single parentId
+  unsubs.push(listen(F.query(F.collection(db,'devices'),F.where('parentIds','array-contains',user.uid))),listen(F.query(F.collection(db,'devices'),F.where('parentId','==',user.uid))));
+ }catch(e){app.innerHTML='<section class="c"><p class="off">Could not open the dashboard: '+esc(e.code||e.message)+'</p></section>';}
+});
+</script></body></html>
