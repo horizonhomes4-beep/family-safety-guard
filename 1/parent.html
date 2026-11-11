@@ -16,16 +16,6 @@ button,.b{box-shadow:none;border-radius:10px;letter-spacing:.005em}
 button:hover,.b:hover{box-shadow:none}
 .tabs button.act{box-shadow:none}
 
-/* ---- notice ---- */
-.notice{max-width:1080px;margin:14px auto 0;padding:0 20px}
-.notice details{background:var(--lamp-bg);border:1px solid color-mix(in srgb,var(--lamp) 45%,var(--line));border-radius:12px;color:var(--ink)}
-.notice summary{display:flex;align-items:center;gap:10px;padding:11px 16px;font-size:.86rem;font-weight:600;list-style:none;cursor:pointer}
-.notice summary::-webkit-details-marker{display:none}
-.notice summary:before{content:"i";flex:none;display:grid;place-items:center;width:20px;height:20px;border-radius:50%;background:var(--lamp);color:#2b1c00;font:700 .8rem var(--serif)}
-.notice summary:after{content:"Details";margin-left:auto;color:var(--mut);font-weight:600;font-size:.8rem}
-.notice details[open] summary:after{content:"Hide"}
-.notice .nbody{padding:0 16px 14px 46px;font-size:.86rem;line-height:1.6;color:var(--mut);max-width:78ch}
-
 /* ---- header ---- */
 .top{background:var(--card);border:1px solid var(--line);border-radius:var(--r-l);padding:12px 16px 12px 14px;margin-bottom:18px;box-shadow:var(--shadow)}
 .top h1{font:600 1.2rem/1.1 var(--serif);letter-spacing:0}
@@ -95,14 +85,14 @@ input,textarea,select{border-radius:10px}
 .login button{border-radius:12px}
 
 @media(max-width:640px){
- .shell{padding:12px 12px 70px}.notice{padding:0 12px}
+ .shell{padding:12px 12px 70px}
  .top{padding:10px 12px}.greet{padding:22px 20px}
  .dhead{padding:18px 16px 2px}.pane{padding:14px 16px 22px}.dev .tabs{padding:8px 8px 0}
 }
-@media print{.notice{display:none}.top{box-shadow:none}}
+@media print{.top{box-shadow:none}}
 </style>
 </head>
-<body class="pg-parent"><aside class="notice"><details><summary>This dashboard is connected to a Mac. Location is approximate and blocked attempts are inferred from browser history.</summary><div class="nbody"><b>Mac edition.</b> Website and safe-search rules, screen-time limits, allowed hours, lock/unlock, app, game and browser blocking, requests, browser history and private-browsing policies are enforced by the Mac agent. Not possible on a Mac: precise GPS location (approximate, internet-based location is shown instead) and live DNS “blocked attempt” counts (blocked attempts are inferred from browser history). The “Web monitoring status” box on the Sites visited tab shows what is active on this Mac.</div></details></aside><main class="shell"><div class="top"><h1><span class="brandmark">🛡️</span>ParentGuard</h1><div id="who"></div></div><div id="app"><div class="c">Connecting to Firebase…</div></div></main>
+<body class="pg-parent"><main class="shell"><div class="top"><h1><span class="brandmark">🛡️</span>ParentGuard</h1><div id="who"></div></div><div id="app"><div class="c">Connecting to Firebase…</div></div></main>
 <script type="module">
 import {auth,db,A,F,panel,esc,online,J,busy,speak,stopSpeak,canSpeak} from './common.js';
 const app=document.getElementById('app'),who=document.getElementById('who');let unsubs=[];
