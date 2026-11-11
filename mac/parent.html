@@ -1,6 +1,98 @@
 <!doctype html>
-<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Parent dashboard · ParentGuard</title><link rel="stylesheet" href="style.css"></head>
-<body><div style="max-width:1100px;margin:12px auto;padding:11px 15px;border:1px solid #d8a64b;border-radius:10px;background:#fff8e8;color:#624716;font-size:13px;line-height:1.5"><b>Mac edition:</b> Website and safe-search rules, screen-time limits, allowed hours, lock/unlock, app, game and browser blocking, requests, browser history and private-browsing policies are enforced by the Mac agent. Not possible on a Mac: precise GPS location (approximate, internet-based location is shown instead) and live DNS “blocked attempt” counts (blocked attempts are inferred from browser history). The “Web monitoring status” box on the Sites visited tab shows what is active on this Mac.</div><main class="shell"><div class="top"><h1><span class="brandmark">🛡️</span>ParentGuard</h1><div id="who"></div></div><div id="app"><div class="c">Connecting to Firebase…</div></div></main>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Parent dashboard · ParentGuard</title><link rel="stylesheet" href="style.css">
+<style>
+/* ParentGuard parent dashboard — presentation layer only. Nothing here changes how the page behaves. */
+
+/* Live timeline is not shown to parents. It is hidden rather than removed because the dashboard code still refreshes it in the background. */
+.tabs [data-tab="live"],.pane[data-p="live"]{display:none!important}
+
+/* ---- surface: a flat, quiet canvas ---- */
+:root{--r-l:16px;--r-xl:20px;--shadow:0 1px 2px #12231f0d,0 2px 8px -2px #12231f14;--shadow-lg:0 1px 2px #12231f14,0 12px 32px -12px #12231f2e}
+body{background:var(--bg);background-image:none;font-size:15px;letter-spacing:.005em;-webkit-font-smoothing:antialiased;font-variant-numeric:tabular-nums}
+.shell{max-width:1080px;padding:20px 20px 80px}
+button:hover,.b:hover{transform:none}
+button:active,.b:active{transform:none;filter:brightness(.96)}
+button,.b{box-shadow:none;border-radius:10px;letter-spacing:.005em}
+button:hover,.b:hover{box-shadow:none}
+.tabs button.act{box-shadow:none}
+
+/* ---- header ---- */
+.top{background:var(--card);border:1px solid var(--line);border-radius:var(--r-l);padding:12px 16px 12px 14px;margin-bottom:18px;box-shadow:var(--shadow)}
+.top h1{font:600 1.2rem/1.1 var(--serif);letter-spacing:0}
+.brandmark{width:34px;height:34px;border-radius:10px;font-size:1rem;box-shadow:none}
+#who small{font-weight:600;color:var(--ink)}
+#who button{border-radius:10px;padding:8px 14px;font-size:.85rem}
+
+/* ---- greeting ---- */
+.greet{padding:26px 30px;margin:0 0 18px;border-radius:var(--r-xl);box-shadow:var(--shadow-lg);
+ background:radial-gradient(360px 180px at 100% 0,color-mix(in srgb,var(--lamp) 55%,transparent),transparent 72%),linear-gradient(135deg,var(--pri2),var(--pri))}
+.greet h2{font-size:clamp(1.5rem,3.6vw,2rem);font-weight:600;letter-spacing:-.01em}
+.greet p{font-size:.95rem;line-height:1.55;margin-top:8px}
+.greet .pills{margin-top:16px}
+.greet .pill{background:#ffffff1f;border:1px solid #ffffff33;font-weight:600;font-size:.8rem;padding:5px 12px}
+.greet .gbtn{border-radius:10px}
+
+/* ---- child switcher ---- */
+#kidsBox{padding:14px 18px 16px}
+#kidsBox h2{font-size:.88rem;font-weight:700;color:var(--mut);margin:0}
+.kids{margin-top:10px}
+.kid{border-radius:12px;padding:7px 16px 7px 7px;border:1.5px solid var(--line);background:var(--card);font-weight:600}
+.kid.act{border-color:var(--pri);box-shadow:0 0 0 3px color-mix(in srgb,var(--pri) 14%,transparent)}
+.kid .av{border-radius:9px}.av i{border-radius:50%}
+
+/* ---- child panel ---- */
+.dev{border-radius:var(--r-xl);box-shadow:var(--shadow)}
+.dhead{padding:22px 26px 4px}
+.dhead h3{font-size:1.5rem;font-weight:600;letter-spacing:-.01em}
+.dev .tabs{gap:2px;padding:10px 20px 0;border-bottom:1px solid var(--line);margin-top:10px}
+.dev .tabs button{border-radius:8px 8px 0 0;background:transparent;color:var(--mut);padding:11px 15px 12px;font-weight:600;font-size:.9rem;position:relative}
+.dev .tabs button:hover{background:var(--soft);color:var(--ink)}
+.dev .tabs button.act{background:transparent;color:var(--pri);box-shadow:inset 0 -3px 0 var(--pri)}
+.pane{padding:18px 26px 26px}
+
+/* ---- timer + lock controls ---- */
+.tbox{border-radius:var(--r-l);background:radial-gradient(260px 140px at 100% 0,color-mix(in srgb,var(--lamp) 32%,transparent),transparent 72%),linear-gradient(135deg,var(--pri2),var(--pri))}
+.big{font-weight:500;letter-spacing:-.025em}
+.pbar{height:8px}
+.lockbox{background:var(--soft);border-radius:var(--r-l)}
+
+/* ---- numbers and lists ---- */
+.today{border-radius:var(--r-l);background:var(--card);box-shadow:none}
+.stat{border-radius:14px;padding:16px 16px 14px 20px;background:var(--soft);border-color:var(--line)}
+.stat:before{width:3px;border-radius:0}
+.stat b{font-size:2.1rem;font-weight:500}
+.stat span{font-size:.88rem;font-weight:600}
+.t{border-radius:12px}
+.sec b{font-size:.95rem}
+.item,.hit,.rq,details.site,details.grp{border-radius:12px}
+.item:hover,.tli:hover{border-color:color-mix(in srgb,var(--pri) 55%,var(--line))}
+.tg{border-radius:12px}
+.alerts{border-radius:12px}
+.empty{border-width:1.5px;border-radius:12px}
+input,textarea,select{border-radius:10px}
+.savebar{border-radius:0 0 var(--r-xl) var(--r-xl)}
+
+/* ---- dark mode: keep white text on the deep green panels readable ---- */
+@media(prefers-color-scheme:dark){
+ .greet{background:radial-gradient(360px 180px at 100% 0,#f3a63444,transparent 72%),linear-gradient(135deg,#0a2f2a,#14574f)}
+ .tbox:not(.lk){background:radial-gradient(260px 140px at 100% 0,#f3a63438,transparent 72%),linear-gradient(135deg,#0a2f2a,#14574f)}
+ .brandmark,.av{color:#04201b}
+}
+
+/* ---- sign-in ---- */
+.login{margin:48px auto;padding:34px;border-radius:var(--r-xl);box-shadow:var(--shadow-lg)}
+.login h2{font-size:1.6rem}
+.login button{border-radius:12px}
+
+@media(max-width:640px){
+ .shell{padding:12px 12px 70px}
+ .top{padding:10px 12px}.greet{padding:22px 20px}
+ .dhead{padding:18px 16px 2px}.pane{padding:14px 16px 22px}.dev .tabs{padding:8px 8px 0}
+}
+@media print{.top{box-shadow:none}}
+</style>
+</head>
+<body class="pg-parent"><main class="shell"><div class="top"><h1><span class="brandmark">🛡️</span>ParentGuard</h1><div id="who"></div></div><div id="app"><div class="c">Connecting to Firebase…</div></div></main>
 <script type="module">
 import {auth,db,A,F,panel,esc,online,J,busy,speak,stopSpeak,canSpeak} from './common.js';
 const app=document.getElementById('app'),who=document.getElementById('who');let unsubs=[];
