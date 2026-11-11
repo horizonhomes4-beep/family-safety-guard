@@ -1,15 +1,172 @@
-<!doctype html>
-<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>ParentGuard</title><link rel="stylesheet" href="style.css"></head>
-<body><main class="shell landing">
-<header class="hero"><div class="brand">🛡️ ParentGuard</div><p>See how your child's day on the PC is going, and keep it safe.</p></header>
-<section class="c"><h2>Parent sign in</h2><p>Use the email and password your administrator gave you.</p>
-<div class="choice"><a class="b lg" id="main" href="parent.html">Sign in as a parent</a></div></section>
-<p class="muted">ParentGuard for Windows 10/11 child devices. Device enforcement requires installation of the Windows agent.</p></main>
-<script type="module">
-// The landing page never advertises the administrator pages. They are shown only to someone who is already signed in as an administrator.
-import {auth,A,roleOf} from './common.js';
-A.onAuthStateChanged(auth,async u=>{const r=await roleOf(u),m=document.getElementById('main'),box=m.parentElement;
- box.querySelector('[data-adm]')?.remove();
- if(r==='parent')m.textContent='Open my dashboard';else m.textContent='Sign in as a parent';
- if(r==='admin'){const a=document.createElement('a');a.className='b gr lg';a.href='admin.html';a.dataset.adm='1';a.textContent='Open administrator page';box.append(a)}});
-</script></body></html>
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Family Safety Guard – Manage your children’s devices remotely</title>
+<style>
+:root{
+  box-sizing:border-box;
+  padding-top:env(safe-area-inset-top,0px);
+  padding-bottom:env(safe-area-inset-bottom,0px);
+  --bg1:#0b1d3a; --bg2:#12396b; --bg3:#0e7a8a;
+  --ink:#f4f9ff; --muted:#b9cde6;
+  --glass:rgba(255,255,255,.09); --line:rgba(255,255,255,.2);
+  --mint:#3ee6b0; --sun:#ffc857;
+  --win-a:#39a9ff; --win-b:#0b63d6; --win-edge:#073d8a;
+  --mac-a:#ff8f6b; --mac-b:#e4437a; --mac-edge:#8e1f52;
+}
+@media (prefers-color-scheme: light){
+  :root:not([data-theme="dark"]){
+    --bg1:#e9f4ff; --bg2:#d3ecff; --bg3:#c9f5ea;
+    --ink:#0c2547; --muted:#3b5878;
+    --glass:rgba(255,255,255,.65); --line:rgba(12,37,71,.15);
+  }
+}
+:root[data-theme="light"]{
+  --bg1:#e9f4ff; --bg2:#d3ecff; --bg3:#c9f5ea;
+  --ink:#0c2547; --muted:#3b5878;
+  --glass:rgba(255,255,255,.65); --line:rgba(12,37,71,.15);
+}
+*,*::before,*::after{box-sizing:inherit}
+html{height:100%;scroll-padding-top:env(safe-area-inset-top,0px)}
+body{
+  margin:0;min-height:100%;color:var(--ink);
+  font-family:"Segoe UI",system-ui,-apple-system,Roboto,"Helvetica Neue",Arial,sans-serif;
+  background:linear-gradient(135deg,var(--bg1),var(--bg2) 55%,var(--bg3));
+  background-attachment:fixed;overflow-x:hidden;line-height:1.55;
+}
+.orb{position:fixed;border-radius:50%;filter:blur(60px);opacity:.45;z-index:0;pointer-events:none;animation:drift 14s ease-in-out infinite alternate}
+.o1{width:min(46vw,380px);height:min(46vw,380px);background:#3ee6b0;top:-8%;left:-8%}
+.o2{width:min(52vw,440px);height:min(52vw,440px);background:#4b8dff;bottom:-12%;right:-10%;animation-delay:-5s}
+.o3{width:min(30vw,240px);height:min(30vw,240px);background:#ffc857;top:45%;left:60%;opacity:.25;animation-delay:-9s}
+@keyframes drift{to{transform:translate(40px,-30px) scale(1.15)}}
+main{position:relative;z-index:1;max-width:1000px;margin:0 auto;padding:clamp(20px,5vw,56px) clamp(16px,4vw,32px) 40px;text-align:center}
+.brand{display:inline-flex;align-items:center;gap:10px;padding:8px 16px;border:1px solid var(--line);background:var(--glass);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);border-radius:999px;font-weight:600;font-size:.95rem}
+.brand i{width:9px;height:9px;border-radius:50%;background:var(--mint);box-shadow:0 0 0 0 var(--mint);animation:ping 2s infinite}
+@keyframes ping{70%{box-shadow:0 0 0 12px transparent}100%{box-shadow:0 0 0 0 transparent}}
+.shield{width:clamp(110px,22vw,170px);margin:clamp(20px,4vw,36px) auto 8px;display:block;animation:float 5s ease-in-out infinite;filter:drop-shadow(0 18px 26px rgba(0,0,0,.35))}
+@keyframes float{50%{transform:translateY(-12px)}}
+.ring{transform-origin:60px 62px;animation:spin 12s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+h1{font-size:clamp(2rem,6.4vw,4rem);line-height:1.08;margin:.3em 0 .25em;letter-spacing:-.02em;
+  background:linear-gradient(90deg,#fff,var(--mint),var(--sun),#fff);background-size:250% 100%;
+  -webkit-background-clip:text;background-clip:text;color:transparent;animation:shine 7s linear infinite}
+@media (prefers-color-scheme: light){:root:not([data-theme="dark"]) h1{background-image:linear-gradient(90deg,#0c2547,#0b63d6,#e4437a,#0c2547)}}
+@keyframes shine{to{background-position:-250% 0}}
+.cap{font-size:clamp(1.15rem,3.2vw,1.75rem);font-weight:600;margin:0 0 .5em}
+.sub{max-width:620px;margin:0 auto;color:var(--muted);font-size:clamp(1rem,2.4vw,1.15rem)}
+.cta{display:flex;flex-wrap:wrap;justify-content:center;gap:clamp(18px,4vw,34px);margin:clamp(28px,5vw,48px) 0 12px}
+.btn{
+  --a:var(--win-a);--b:var(--win-b);--edge:var(--win-edge);
+  position:relative;display:inline-flex;align-items:center;justify-content:center;gap:14px;
+  min-width:min(100%,270px);padding:18px 30px;border-radius:18px;
+  color:#fff;text-decoration:none;font-weight:700;font-size:clamp(1.05rem,2.6vw,1.2rem);
+  background:linear-gradient(180deg,var(--a),var(--b));
+  box-shadow:0 8px 0 var(--edge),0 18px 30px rgba(0,0,0,.35),inset 0 2px 0 rgba(255,255,255,.45);
+  transition:transform .15s ease,box-shadow .15s ease;
+  text-shadow:0 1px 2px rgba(0,0,0,.3);overflow:hidden;
+}
+.btn.mac{--a:var(--mac-a);--b:var(--mac-b);--edge:var(--mac-edge)}
+.btn::after{content:"";position:absolute;top:0;left:-70%;width:50%;height:100%;background:linear-gradient(100deg,transparent,rgba(255,255,255,.5),transparent);transform:skewX(-20deg);animation:sweep 3.6s ease-in-out infinite}
+.mac::after{animation-delay:1.8s}
+@keyframes sweep{0%,55%{left:-70%}100%{left:130%}}
+.btn:hover{transform:translateY(-4px);box-shadow:0 12px 0 var(--edge),0 26px 38px rgba(0,0,0,.4),inset 0 2px 0 rgba(255,255,255,.45)}
+.btn:active{transform:translateY(8px);box-shadow:0 0 0 var(--edge),0 6px 10px rgba(0,0,0,.35),inset 0 2px 0 rgba(255,255,255,.3)}
+.btn:focus-visible,.copy:focus-visible,.wa:focus-visible{outline:3px solid var(--sun);outline-offset:4px}
+.btn svg{width:28px;height:28px;flex:none}
+.note{font-size:.9rem;color:var(--muted)}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:16px;margin:clamp(32px,6vw,56px) 0}
+.card{padding:22px 20px;border:1px solid var(--line);background:var(--glass);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);border-radius:20px;text-align:left}
+.card:nth-child(2){border-radius:28px 12px 28px 12px}
+.card:nth-child(3){border-radius:12px 28px 12px 28px}
+.card b{display:block;font-size:1.08rem;margin:8px 0 4px}
+.card span{color:var(--muted);font-size:.95rem}
+.card em{font-style:normal;font-size:1.7rem}
+.share{padding:clamp(20px,4vw,34px);border:1px solid var(--line);background:var(--glass);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);border-radius:26px}
+.share h2{margin:0 0 6px;font-size:clamp(1.3rem,3.4vw,1.8rem)}
+.share p{margin:0 auto 16px;max-width:600px;color:var(--muted)}
+.linkbox{display:flex;flex-wrap:wrap;gap:10px;justify-content:center;align-items:stretch;max-width:700px;margin:0 auto}
+.linkbox code{flex:1 1 260px;min-width:0;padding:12px 14px;border-radius:12px;border:1px dashed var(--line);background:rgba(0,0,0,.18);font-size:.85rem;overflow-x:auto;white-space:nowrap;text-align:left;color:var(--ink)}
+.copy{border:0;cursor:pointer;padding:12px 22px;border-radius:12px;font-weight:700;font-size:1rem;color:#06241b;background:var(--mint);box-shadow:0 4px 0 #1a9f77;transition:transform .12s,box-shadow .12s}
+.copy:active{transform:translateY(4px);box-shadow:0 0 0 #1a9f77}
+.copy.done{background:var(--sun);box-shadow:0 4px 0 #c28b10}
+.help{margin-top:22px;display:flex;flex-wrap:wrap;gap:12px;justify-content:center}
+.wa{display:inline-flex;align-items:center;gap:8px;padding:11px 18px;border-radius:999px;text-decoration:none;font-weight:600;color:#fff;background:#1fa855;box-shadow:0 4px 14px rgba(31,168,85,.45);transition:transform .15s}
+.wa:hover{transform:translateY(-2px)}
+footer{margin-top:34px;color:var(--muted);font-size:.92rem}
+footer strong{color:var(--ink)}
+.intro>*{opacity:0;transform:translateY(18px);animation:rise .7s cubic-bezier(.2,.8,.2,1) forwards}
+.intro>*:nth-child(1){animation-delay:.05s}.intro>*:nth-child(2){animation-delay:.2s}.intro>*:nth-child(3){animation-delay:.35s}.intro>*:nth-child(4){animation-delay:.5s}.intro>*:nth-child(5){animation-delay:.65s}.intro>*:nth-child(6){animation-delay:.8s}
+@keyframes rise{to{opacity:1;transform:none}}
+@media (max-width:520px){.btn{width:100%}.cta{gap:22px}}
+@media (min-width:1200px){main{max-width:1100px}}
+@media (prefers-reduced-motion:reduce){*,*::before,*::after{animation:none!important;transition:none!important}.intro>*{opacity:1;transform:none}}
+</style>
+</head>
+<body>
+<div class="orb o1"></div><div class="orb o2"></div><div class="orb o3"></div>
+<main>
+  <div class="intro">
+    <div class="brand"><i></i>MathCloud Cares</div>
+    <svg class="shield" viewBox="0 0 120 130" aria-hidden="true">
+      <defs>
+        <linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#6ff2c9"/><stop offset="1" stop-color="#1d8fff"/></linearGradient>
+      </defs>
+      <circle class="ring" cx="60" cy="62" r="56" fill="none" stroke="#ffc857" stroke-width="2" stroke-dasharray="4 10" stroke-linecap="round"/>
+      <path d="M60 14 98 28v30c0 25-16 43-38 54C38 101 22 83 22 58V28z" fill="url(#g)"/>
+      <path d="M60 14 98 28v30c0 25-16 43-38 54z" fill="#fff" opacity=".14"/>
+      <circle cx="60" cy="52" r="9" fill="#fff"/><path d="M44 80c2-12 8-17 16-17s14 5 16 17z" fill="#fff"/>
+    </svg>
+    <h1>Family Safety Guard</h1>
+    <p class="cap">Manage your children’s devices remotely</p>
+    <p class="sub">Set screen-time limits, filter harmful websites and see what your kids do online, all from one simple dashboard, wherever you are.</p>
+    <div>
+      <div class="cta">
+        <a class="btn win" href="windows.html">
+          <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M3 5.5 10.5 4.4v7H3zm8.5-1.2L21 3v8.4h-9.5zM3 12.6h7.5v7L3 18.5zm8.5 0H21V21l-9.5-1.3z"/></svg>
+          Windows PCs
+        </a>
+        <a class="btn mac" href="https://family-safety-guard.vercel.app/mac/parent.html" target="_blank" rel="noopener">
+          <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M16.4 12.6c0-2.3 1.9-3.4 2-3.5-1.1-1.600-2.800-1.800-3.400-1.800-1.400-.1-2.800.9-3.500.9s-1.800-.8-3-.8c-1.500 0-3 .9-3.800 2.300-1.600 2.800-.4 7 1.200 9.300.8 1.100 1.700 2.400 2.900 2.300 1.200 0 1.600-.8 3-.8s1.800.8 3 .7c1.300 0 2.100-1.100 2.800-2.200.9-1.300 1.300-2.500 1.300-2.600-.1 0-2.500-1-2.500-3.800zM14.200 5.800c.6-.8 1.100-1.800.9-2.900-.9 0-2 .6-2.700 1.400-.6.700-1.100 1.800-.9 2.800 1 .1 2-.5 2.700-1.300z"/></svg>
+          Apple laptops
+        </a>
+      </div>
+      <p class="note">Setup takes just a few minutes.</p>
+    </div>
+  </div>
+
+  <section class="grid" aria-label="Features">
+    <div class="card"><em>🕒</em><b>Screen-time control</b><span>Decide when and how long devices can be used.</span></div>
+    <div class="card"><em>🛡️</em><b>Safe browsing</b><span>Block unsuitable sites and apps automatically.</span></div>
+    <div class="card"><em>📍</em><b>Stay informed</b><span>Review activity reports from any phone or computer.</span></div>
+  </section>
+
+  <section class="share">
+    <h2>Share the protection with family and friends</h2>
+    <p>Know someone who needs it? Copy the link below and send it to them so they can subscribe.</p>
+    <div class="linkbox">
+      <code id="lnk">https://family-safety-guard.vercel.app/subscription.html</code>
+      <button class="copy" id="cp" type="button">Copy link</button>
+    </div>
+    <div class="help">
+      <a class="wa" href="https://wa.me/2348102341648" target="_blank" rel="noopener">💬 WhatsApp +234 810 234 1648</a>
+      <a class="wa" href="https://wa.me/2349129225442" target="_blank" rel="noopener">💬 WhatsApp +234 912 922 5442</a>
+    </div>
+    <p style="margin-top:14px;font-size:.92rem">Have questions? Chat with MathCloud Tech Services on WhatsApp.</p>
+  </section>
+
+  <footer>Made with care by <strong>MathCloud Cares</strong></footer>
+</main>
+<script>
+(function(){
+  var b=document.getElementById('cp'),t=document.getElementById('lnk');
+  b.addEventListener('click',function(){
+    var s=t.textContent.trim(),ok=function(){b.textContent='Copied!';b.classList.add('done');setTimeout(function(){b.textContent='Copy link';b.classList.remove('done')},2000)};
+    function fallback(){try{var r=document.createRange();r.selectNodeContents(t);var x=getSelection();x.removeAllRanges();x.addRange(r);document.execCommand('copy');ok()}catch(e){b.textContent='Select and copy'}}
+    try{navigator.clipboard.writeText(s).then(ok,fallback)}catch(e){fallback()}
+  });
+})();
+</script>
+</body>
+</html>
