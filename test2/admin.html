@@ -1,0 +1,138 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Admin · ParentGuard</title><meta name="robots" content="noindex,nofollow"><link rel="stylesheet" href="style.css"></head>
+<body><div style="max-width:1100px;margin:12px auto;padding:11px 15px;border:1px solid #d8a64b;border-radius:10px;background:#fff8e8;color:#624716;font-size:13px;line-height:1.5"><b>Mac edition:</b> Website and safe-search rules, screen-time limits, allowed hours, lock/unlock, app, game and browser blocking, requests, browser history and private-browsing policies are enforced by the Mac agent. Not possible on a Mac: precise GPS location (approximate, internet-based location is shown instead) and live DNS “blocked attempt” counts (blocked attempts are inferred from browser history). The “Web monitoring status” box on the Sites visited tab shows what is active on this Mac.</div><main class="shell"><div class="top"><h1><span class="brandmark">🛡️</span>ParentGuard Admin</h1><div id="who"></div></div><div id="app"><div class="c">Connecting to Firebase…</div></div></main>
+<script type="module">
+import {auth,db,A,F,panel,J,esc,online,parentsOf,fbcfg,busy,toast,withTimeout,roleOf} from './common.js';
+import {initializeApp} from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js';
+import {getAuth,createUserWithEmailAndPassword,signOut} from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js';
+const appEl=document.getElementById('app'),who=document.getElementById('who');
+const secondaryAuth=getAuth(initializeApp(fbcfg,'parent-account-creator'));
+const rnd=()=>Array.from(crypto.getRandomValues(new Uint8Array(24))).map(x=>x.toString(16).padStart(2,'0')).join('');
+const NONE='__none';
+function showLogin(note=''){
+ who.innerHTML='';
+ appEl.innerHTML=`<section class="c login"><h2>Administrator sign in</h2><p class="lead">This area is for administrators only.</p>${note?`<p class="off">${esc(note)}</p>`:''}<label for="e">Email address</label><input id="e" type="email" autocomplete="username"><label for="p">Password</label><input id="p" type="password" autocomplete="current-password"><button id="go">Sign in</button><p id="msg" role="status"></p><p><a href="index.html">Home</a></p></section>`;
+ const e=document.getElementById('e'),p=document.getElementById('p'),b=document.getElementById('go'),m=document.getElementById('msg');
+ const go=()=>busy(b,'Signing in…',async()=>{m.className='';m.textContent='';try{await A.signInWithEmailAndPassword(auth,e.value.trim(),p.value)}catch(x){m.className='off';m.textContent=x.code||x.message}});
+ b.onclick=go;p.addEventListener('keydown',x=>{if(x.key==='Enter')go()});
+}
+let unsubP=null,unsubD=null;const stop=()=>{unsubP&&unsubP();unsubD&&unsubD();unsubP=unsubD=null};
+A.onAuthStateChanged(auth,async user=>{
+ stop();
+ if(!user||user.isAnonymous){showLogin();return;}
+ appEl.innerHTML='<div class="c">Checking administrator access…</div>';
+ try{const s=await F.getDoc(F.doc(db,'admins',user.uid));if(!s.exists()){
+   // A signed-in parent is shown a closed door (and sent back to the parent dashboard) instead of any administrator content.
+   if(await roleOf(user)==='parent'){who.innerHTML='';appEl.innerHTML='<section class="c restricted"><div class="ico">🔒</div><h2>This page is for administrators</h2><p class="muted">Parent accounts cannot open the administrator area. Your dashboard has everything you can manage.</p><div class="row"><a class="b lg" href="parent.html">Go to my dashboard</a><button id="pout" class="gr lg">Sign out</button></div></section>';document.getElementById('pout').onclick=()=>A.signOut(auth);return;}
+   await A.signOut(auth);showLogin('This account is not a ParentGuard administrator.');return;}}
+ catch(e){showLogin('Could not verify administrator access: '+(e.code||e.message));return;}
+ who.innerHTML=`<small>${esc(user.email||'')}</small> <button id="out" class="gr">Sign out</button>`;document.getElementById('out').onclick=()=>A.signOut(auth);
+ appEl.innerHTML=`<section class="c" id="notifyBox"><details id="nd"><summary><h2 style="display:inline;margin:0">✉️ Request e-mail notifications</h2> <small>When a child asks for more time or to allow a site or app, an e-mail goes to the administrator addresses below and to the child's parents.</small></summary>
+ <div class="fields" style="margin-top:14px"><label style="grid-column:1/-1">Administrator e-mail address(es) <small>(separate several with commas)</small><input id="nem" type="text" placeholder="admin@example.com, second@example.com" autocomplete="off"></label>
+ <label>EmailJS Service ID<input id="nsv" autocomplete="off" placeholder="service_xxxxxxx"></label><label>EmailJS Template ID<input id="ntp" autocomplete="off" placeholder="template_xxxxxxx"></label>
+ <label>EmailJS Public Key<input id="npk" autocomplete="off"></label><label>EmailJS Private Key<input id="nsk" type="password" autocomplete="new-password"></label></div>
+ <label class="tg" style="margin:12px 0"><input type="checkbox" id="nen" checked><span class="sl"></span><span class="tt"><b>Send e-mails for child requests</b><small>Requests always appear in the dashboards, even when this is off.</small></span></label>
+ <div class="row"><button id="nsave">Save e-mail settings</button><button id="ntest" class="gr">Send test e-mail</button><span id="nmsg" role="status"></span></div>
+ <details style="margin-top:12px"><summary><small>How to set up the mail provider (free, 2 minutes)</small></summary><ol class="muted" style="font-size:.88rem">
+ <li>Create a free account at emailjs.com and add an e-mail service (for example Gmail). Copy its <b>Service ID</b>.</li>
+ <li>Create an e-mail template. Set <b>To Email</b> to <code>{{to_email}}</code>, <b>Subject</b> to <code>{{subject}}</code> and put <code>{{message}}</code> in the body. Copy its <b>Template ID</b>.</li>
+ <li>In Account, copy the <b>Public Key</b> and <b>Private Key</b>. In Account, Security, allow API calls from non-browser (server) applications so the child's PC can send.</li>
+ <li>Paste the four values above, press <b>Save</b>, then <b>Send test e-mail</b>.</li></ol></details></details></section>
+ <section class="c"><h2>1 · Choose a parent</h2><div class="row"><div class="combo"><input id="pq" placeholder="Search parents by name or email" autocomplete="off" aria-label="Search parents"><ul id="pl" hidden></ul></div><button id="newP" class="gr">+ New parent</button></div>
+ <div id="newPbox" hidden><div class="row" style="margin-top:12px"><input id="pn" placeholder="Full name"><input id="pe" type="email" placeholder="Email"><input id="pw" type="password" placeholder="Temporary password (8+ characters)"><button id="mkP">Create parent login</button></div><p id="pm" role="status"></p></div></section>
+ <section class="c" id="kidsBox" hidden></section><div id="one"></div>`;
+ const $=id=>document.getElementById(id);
+ let parents=[],devices=[],selP=null,selK=null,panelEl=null,panelSig='',headSig='';
+ const pLabel=p=>p.name||p.email||p.id;
+ const kidsOf=pid=>devices.filter(d=>pid===NONE?!parentsOf(d.data()).length:parentsOf(d.data()).includes(pid));
+ // ---- e-mail notification settings: saved once, copied to every child's private/notify document for the agent ----
+ let notify=null,chain=Promise.resolve();
+ const hash=t=>{let x=5381;for(let i=0;i<t.length;i++)x=((x<<5)+x+t.charCodeAt(i))|0;return String(x>>>0)};
+ const recipientsFor=doc=>[...new Set([...(notify.emails||[]),...parentsOf(doc.data()).map(i=>(parents.find(p=>p.id===i)||{}).email).filter(Boolean)].map(x=>String(x).toLowerCase()))];
+ const doSync=async force=>{for(const doc of [...devices]){const body={recipients:recipientsFor(doc),enabled:notify.enabled!==false,serviceId:notify.serviceId||'',templateId:notify.templateId||'',publicKey:notify.publicKey||'',privateKey:notify.privateKey||''},sig=hash(JSON.stringify(body));
+   if(!force&&doc.data().notifySig===sig)continue;await F.setDoc(F.doc(db,'devices',doc.id,'private','notify'),{json:JSON.stringify(body),updatedAt:Date.now()});await F.updateDoc(doc.ref,{notifySig:sig});}};
+ const syncNotify=force=>{if(!notify)return Promise.resolve();const run=chain.then(()=>doSync(force));chain=run.catch(()=>{});return run};
+ const emailsOf=()=>$('nem').value.split(/[,;\s]+/).map(x=>x.trim().toLowerCase()).filter(Boolean);
+ const nForm=()=>({emails:emailsOf(),enabled:$('nen').checked,serviceId:$('nsv').value.trim(),templateId:$('ntp').value.trim(),publicKey:$('npk').value.trim(),privateKey:$('nsk').value.trim()});
+ const badEmails=l=>l.filter(x=>!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(x));
+ F.getDoc(F.doc(db,'settings','notify')).then(sn=>{notify=sn.exists()?sn.data():{emails:[],enabled:true};const n=notify;$('nem').value=(n.emails||[]).join(', ');$('nsv').value=n.serviceId||'';$('ntp').value=n.templateId||'';$('npk').value=n.publicKey||'';$('nsk').value=n.privateKey||'';$('nen').checked=n.enabled!==false;
+   if(!sn.exists()||!(n.emails||[]).length)$('nd').open=true;syncNotify(false).catch(e=>console.warn('notify sync',e));}).catch(e=>{$('nmsg').className='off';$('nmsg').textContent='Could not load e-mail settings: '+(e.code||e.message)});
+ $('nsave').onclick=()=>{const m=$('nmsg'),next=nForm(),bad=badEmails(next.emails);if(bad.length){m.className='off';m.textContent='Not a valid e-mail address: '+bad.join(', ');return}
+  return busy($('nsave'),'Saving…',async()=>{m.className='work';m.innerHTML='<span class="spin"></span> Saving and sending to the child devices…';
+   try{await withTimeout(F.setDoc(F.doc(db,'settings','notify'),next));notify=next;await withTimeout(syncNotify(true),30000);m.className='on';m.textContent='✓ Saved. '+devices.length+' child device(s) updated.';toast('E-mail settings saved ✓','ok')}
+   catch(e){m.className='off';m.textContent='✗ Not saved: '+(e.code||e.message);toast('Could not save: '+(e.code||e.message),'bad');throw e}},'Saved').catch(()=>{});};
+ $('ntest').onclick=()=>{const m=$('nmsg'),f=nForm(),bad=badEmails(f.emails),to=f.emails[0]||user.email;
+  if(bad.length){m.className='off';m.textContent='Not a valid e-mail address: '+bad.join(', ');return}
+  if(!f.serviceId||!f.templateId||!f.publicKey){m.className='off';m.textContent='Fill in the Service ID, Template ID and Public Key first.';return}
+  return busy($('ntest'),'Sending test…',async()=>{m.className='work';m.innerHTML='<span class="spin"></span> Sending a test e-mail to '+esc(to)+'…';
+   try{const r=await withTimeout(fetch('https://api.emailjs.com/api/v1.0/email/send',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({service_id:f.serviceId,template_id:f.templateId,user_id:f.publicKey,template_params:{to_email:to,subject:'ParentGuard test e-mail',message:'This is a test from the ParentGuard Admin page. Child requests will be e-mailed to you like this.',child_name:'Test',from_name:'@M Family Safety Guard'}})}));
+    const t=await r.text();if(!r.ok)throw {message:'The mail provider answered: '+t.slice(0,160)};m.className='on';m.textContent='✓ Test e-mail sent to '+to+'. Check the inbox (and spam).';toast('Test e-mail sent ✓','ok')}
+   catch(e){m.className='off';m.textContent='✗ '+(e.code||e.message);toast('Test failed: '+(e.code||e.message),'bad');throw e}},'Sent').catch(()=>{});};
+ // searchable parent dropdown
+ const pq=$('pq'),pl=$('pl');
+ const drawList=()=>{const q=pq.value.trim().toLowerCase();const rows=[{id:NONE,name:'Unassigned children',email:devices.filter(d=>!parentsOf(d.data()).length).length+' child device(s)'},...parents].filter(p=>!q||(pLabel(p)+' '+(p.email||'')).toLowerCase().includes(q));
+  pl.innerHTML=rows.map(p=>`<li data-id="${esc(p.id)}" class="${p.id===selP?'sel':''}"><b>${esc(pLabel(p))}</b><small>${esc(p.id===NONE?p.email:(p.email||'')+' · '+kidsOf(p.id).length+' child(ren)')}</small></li>`).join('')||'<li><small>No parents match.</small></li>';};
+ pq.onfocus=()=>{pq.select();drawList();pl.hidden=false};pq.oninput=()=>{drawList();pl.hidden=false};
+ pq.onblur=()=>setTimeout(()=>{pl.hidden=true;const p=parents.find(x=>x.id===selP);pq.value=selP===NONE?'Unassigned children':p?pLabel(p):''},150);
+ pl.onmousedown=e=>{const li=e.target.closest('li[data-id]');if(!li)return;e.preventDefault();selP=li.dataset.id;selK=null;pl.hidden=true;pq.value=li.querySelector('b').textContent;pq.blur();drawKids();drawOne();};
+ $('newP').onclick=()=>$('newPbox').hidden=!$('newPbox').hidden;
+ $('mkP').onclick=async()=>{const name=$('pn').value.trim(),email=$('pe').value.trim().toLowerCase(),pw=$('pw').value,m=$('pm'),b=$('mkP');if(!name||!email||pw.length<8){m.className='off';m.textContent='Enter a name, an email and a password of at least 8 characters.';return;}
+  m.className='work';m.innerHTML='<span class="spin"></span> Creating the parent login…';await busy(b,'Creating…',async()=>{try{const c=await createUserWithEmailAndPassword(secondaryAuth,email,pw);await F.setDoc(F.doc(db,'parents',c.user.uid),{uid:c.user.uid,name,email,accountType:'email-password',createdAt:new Date().toISOString()});await signOut(secondaryAuth);$('pn').value=$('pe').value=$('pw').value='';selP=c.user.uid;m.className='on';m.textContent='✓ Parent created. They sign in at parent.html with this email and password.';toast('Parent created ✓','ok');}catch(e){m.className='off';m.textContent='Failed: '+(e.code||e.message);toast('Could not create parent: '+(e.code||e.message),'bad');}},'Created');};
+ // children of the selected parent
+ function drawKids(){const box=$('kidsBox');if(!selP){box.hidden=true;return;}box.hidden=false;const ks=kidsOf(selP),p=parents.find(x=>x.id===selP);
+  const others=devices.filter(d=>selP!==NONE&&!parentsOf(d.data()).includes(selP));
+  box.innerHTML=`<h2>2 · ${selP===NONE?'Unassigned children':esc(pLabel(p||{}))+"'s children"}</h2><div class="kids">${ks.map(d=>{const x=d.data(),on=online(J(x.status));return `<button class="kid ${d.id===selK?'act':''}" data-k="${d.id}"><span class="av">${esc((x.name||'?')[0].toUpperCase())}<i class="${on?'on':''}"></i></span><span>${esc(x.name||'Child')}<small>${J(x.status).removed?'Removed':x.protection==='off'?'Protection stopped':x.suspended?'Suspended':on?'Online':'Offline'}</small></span></button>`}).join('')||'<span class="muted">No children yet.</span>'}</div>
+  <div class="row" style="margin-top:14px"><input id="kn" placeholder="New child's name"><button id="addK">+ Add child</button>${others.length?`<select id="link"><option value="">Link existing child…</option>${others.map(d=>`<option value="${d.id}">${esc(d.data().name||d.id)}</option>`).join('')}</select>`:''}</div><div id="kcred"></div>`;
+  box.querySelectorAll('[data-k]').forEach(b=>b.onclick=()=>{selK=b.dataset.k;drawKids();drawOne();});
+  $('addK').onclick=async()=>{const name=$('kn').value.trim();if(!name)return;const b=$('addK');await busy(b,'Adding…',async()=>{try{const ids=selP===NONE?[]:[selP];const ref=await F.addDoc(F.collection(db,'devices'),{name,parentIds:ids,parentId:ids[0]||'',suspended:false,cfg:'{}',adminCfg:'{}',status:'{}',createdAt:new Date().toISOString()});await F.setDoc(F.doc(db,'deviceKeys',ref.id),{key:rnd()});selK=ref.id;toast('Child added ✓','ok');}catch(e){$('kcred').textContent='Could not add child: '+(e.code||e.message);toast('Could not add child: '+(e.code||e.message),'bad');}},'Added');};
+  const lk=$('link');if(lk)lk.onchange=()=>{if(lk.value)linkParent(lk.value,selP,true);};}
+ const setParents=(doc,ids)=>F.updateDoc(doc.ref,{parentIds:ids,parentId:ids[0]||''});
+ const linkParent=(devId,pid,add)=>{const doc=devices.find(d=>d.id===devId),cur=parentsOf(doc.data());return setParents(doc,add?[...new Set([...cur,pid])]:cur.filter(x=>x!==pid));};
+ const creds=async(id,box)=>{const snap=await F.getDoc(F.doc(db,'deviceKeys',id));const v=JSON.stringify({projectId:fbcfg.projectId,apiKey:fbcfg.apiKey,deviceId:id,deviceKey:snap.data()?.key||''},null,2);
+  try{await navigator.clipboard.writeText(v);box.innerHTML='<p class="on">config.json copied. Save this as config.json in the Mac agent folder, then run ./install.command on the Mac.</p>';}catch{box.innerHTML='<p>Select and copy this, then save it as config.json and run ./install.command on the Mac:</p>';}
+  const ta=document.createElement('textarea');ta.rows=6;ta.readOnly=true;ta.value=v;box.append(ta);};
+ // the one selected child
+ const handled=new Set();
+ const drawCmd=doc=>{const box=$('cmdbox');if(!box)return;const d=doc.data(),st=J(d.status),cmd=J(d.command),ack=st.commandAck||null;let h='';
+  if(st.removed)h+='<p class="on">✓ ParentGuard is completely removed from this Mac. To protect it again, copy a config.json and run ./install.command.</p>';
+  if(d.protection==='off'&&!st.removed)h+='<p class="off">⏹ Parental control is <b>stopped</b> on this device ('+(st.protection==='off'?'confirmed by the Mac':'waiting for the Mac to confirm')+'). Nothing is restricted or monitored until you press Resume.</p>';
+  const name=t=>t==='uninstall'?'Remove from device':'Repair / refresh';
+  const steps=a=>(a.steps||[]).length?'<ul class="muted" style="margin:4px 0 0;padding-left:18px;font-size:.86rem">'+a.steps.map(x=>'<li>'+(x.ok?'✓ ':'✗ ')+esc(x.n)+' — '+esc(x.t)+'</li>').join('')+'</ul>':'';
+  if(cmd&&cmd.id){const mine=ack&&ack.id===cmd.id;
+   if(!mine)h+='<p class="work"><span class="spin"></span> '+name(cmd.type)+': waiting for the Mac. It picks the command up within seconds when it is online and runs it when it comes back online if it is off. <button id="cc" class="gr">Cancel</button></p>';
+   else if(ack.stage==='removing')h+='<p class="work"><span class="spin"></span> Remove from device: the Mac is deleting ParentGuard now. This takes up to a minute. If nothing changes after 5 minutes the Mac may have been switched off.</p>';
+   else{h+='<p class="'+(ack.ok?'on':'off')+'">'+(ack.ok?'✓ ':'✗ ')+name(ack.type)+': '+esc(ack.note)+'</p>'+steps(ack);
+    if(!handled.has(cmd.id)){handled.add(cmd.id);
+     (async()=>{try{await F.updateDoc(doc.ref,{command:''});
+      if(ack.stage==='removed'&&ack.ok){const ag=await F.getDocs(F.collection(db,'devices',doc.id,'agents'));await Promise.all(ag.docs.map(x=>F.deleteDoc(x.ref)))}}catch(e){console.warn('command cleanup',e)}})();}}
+  }else if(ack&&ack.stage==='done'&&ack.at&&Date.now()/1000-ack.at<86400&&!st.removed){h+='<p class="'+(ack.ok?'on':'off')+'">'+(ack.ok?'✓ ':'✗ ')+name(ack.type)+': '+esc(ack.note)+'</p>'+steps(ack)}
+  box.innerHTML=h;const cc=$('cc');if(cc)cc.onclick=()=>F.updateDoc(doc.ref,{command:''}).then(()=>toast('Command cancelled','ok')).catch(e=>toast('Failed: '+(e.code||e.message),'bad'));};
+ function drawOne(){const out=$('one');
+  const doc=devices.find(d=>d.id===selK);if(!doc){out.innerHTML=selP?'<div class="c empty">Choose a child above to open their dashboard.</div>':'';panelEl=null;panelSig=headSig='';return;}
+  const data=doc.data(),ids=parentsOf(data),hs=JSON.stringify([doc.id,data.name,data.suspended,data.protection,ids,parents.map(p=>[p.id,p.name])]);
+  if(hs!==headSig||!panelEl){headSig=hs;out.innerHTML=`<section class="c"><div class="row"><h2 style="margin:0;flex:1">${esc(data.name||'Child')} ${data.suspended?'<span class="tag bad">Suspended</span>':''} ${data.protection==='off'?'<span class="tag wn">Protection stopped</span>':''}</h2></div>
+   <div class="mgmt" style="margin:12px 0"><button id="ed" class="gr">✏️ Edit name</button><button id="sp" class="${data.suspended?'ok':'wn'}">${data.suspended?'▶ Reactivate':'⏸ Suspend'}</button><button id="cp" class="gr">📋 Copy config.json</button><button id="rk" class="gr">🔑 New device key</button><button id="dl" class="dg">🗑 Delete child</button></div><div class="mgmt" style="margin:0 0 12px"><button id="rp" class="gr" title="Fixes the agent by itself without touching internet or other programs">🔧 Repair / refresh device</button><button id="ps" class="${data.protection==='off'?'ok':'wn'}">${data.protection==='off'?'▶ Resume protection':'⏹ Stop protection'}</button><button id="sd" class="dg" title="Completely removes ParentGuard from the child PC">💣 Remove from device</button></div><div id="cmdbox" role="status"></div><div id="cbox"></div>
+   <div class="sec"><b>Parents who can see this child</b></div><div class="chips">${ids.map(i=>{const p=parents.find(x=>x.id===i);return `<span class="chip">${esc(p?pLabel(p):i)}<button data-rp="${esc(i)}" aria-label="Remove parent">×</button></span>`}).join('')||'<small>No parents linked</small>'}
+   <select id="ap"><option value="">+ Add parent (Father, Mother, Uncle…)</option>${parents.filter(p=>!ids.includes(p.id)).map(p=>`<option value="${esc(p.id)}">${esc(pLabel(p))}</option>`).join('')}</select></div></section><div id="pnl"></div>`;
+   $('ed').onclick=async()=>{const n=prompt('Child name',data.name||'');if(n?.trim())await F.updateDoc(doc.ref,{name:n.trim()});};
+   $('sp').onclick=async()=>{const s=!data.suspended;if(s&&!confirm('Suspend this child? Their device will be locked until you reactivate.'))return;const cfg=J(data.cfg);await busy($('sp'),s?'Suspending…':'Reactivating…',async()=>{try{await withTimeout(F.updateDoc(doc.ref,{suspended:s,cfg:JSON.stringify({...cfg,paused:s?true:false,unlockedUntil:0}),adminCfg:JSON.stringify({...J(data.adminCfg),paused:s,unlockedUntil:0})}));toast(s?'Child suspended':'Child reactivated','ok')}catch(e){toast('Failed: '+(e.code||e.message),'bad')}});};
+   $('cp').onclick=()=>creds(doc.id,$('cbox'));
+   $('rk').onclick=async()=>{if(!confirm('Generate a new key? The installed agent disconnects until you copy the new config.json to the Mac.'))return;await busy($('rk'),'Creating key…',async()=>{try{await withTimeout(F.setDoc(F.doc(db,'deviceKeys',doc.id),{key:rnd()}));const ag=await F.getDocs(F.collection(db,'devices',doc.id,'agents'));await Promise.all(ag.docs.map(x=>F.deleteDoc(x.ref)));await creds(doc.id,$('cbox'));toast('New device key created','ok')}catch(e){toast('Failed: '+(e.code||e.message),'bad')}});};
+   $('dl').onclick=async()=>{if(!confirm('Delete '+(data.name||'this child')+' permanently, including the device key?'))return;await busy($('dl'),'Deleting…',async()=>{try{const ag=await F.getDocs(F.collection(db,'devices',doc.id,'agents'));await Promise.all(ag.docs.map(x=>F.deleteDoc(x.ref)));await F.deleteDoc(F.doc(db,'deviceKeys',doc.id));await F.deleteDoc(doc.ref);selK=null;toast('Child deleted','ok')}catch(e){toast('Failed: '+(e.code||e.message),'bad')}});};
+   const send=type=>F.updateDoc(doc.ref,{command:JSON.stringify({id:rnd().slice(0,16),type,at:Date.now(),by:user.email||''})});
+   $('rp').onclick=async()=>{if(!confirm('Repair / refresh this device?\n\nThe agent undoes its own network changes, re-creates its tasks, reconnects and restarts itself. Internet, files and other programs are NOT touched. Screen-time used today is kept. The Mac must be online.'))return;
+    await busy($('rp'),'Sending…',async()=>{try{await withTimeout(send('repair'));toast('Repair command sent','ok')}catch(e){toast('Failed: '+(e.code||e.message),'bad')}});};
+   $('ps').onclick=async()=>{const off=data.protection==='off';
+    if(!off&&!confirm('Stop parental control on '+(data.name||'this child')+'\'s device?\n\nEvery restriction and all monitoring stop and ParentGuard settings are removed from that PC until you press Resume. Other children are not affected.'))return;
+    await busy($('ps'),off?'Resuming…':'Stopping…',async()=>{try{await withTimeout(F.updateDoc(doc.ref,{protection:off?'on':'off',protectionAt:Date.now(),protectionBy:user.email||''}));toast(off?'Protection resumed':'Protection stopped for this device','ok')}catch(e){toast('Failed: '+(e.code||e.message),'bad')}});};
+   $('sd').onclick=async()=>{const t=prompt('This PERMANENTLY removes @M Family Safety Guard from '+(data.name||'this child')+'\'s PC: program, scheduled tasks, filters, backups and data. The Mac must be online to receive it.\n\nType REMOVE to confirm:');
+    if(t===null)return;if(t.trim()!=='REMOVE'){toast('Not removed: you did not type REMOVE','bad');return}
+    await busy($('sd'),'Sending…',async()=>{try{await withTimeout(send('uninstall'));toast('Removal command sent','ok')}catch(e){toast('Failed: '+(e.code||e.message),'bad')}});};
+   out.querySelectorAll('[data-rp]').forEach(b=>b.onclick=()=>{if(confirm('Remove this parent from '+(data.name||'the child')+'?'))linkParent(doc.id,b.dataset.rp,false)});
+   $('ap').onchange=e=>{if(e.target.value)linkParent(doc.id,e.target.value,true)};
+   panelEl=panel(doc.id,data,'admin',(cfg,adminCfg)=>F.updateDoc(doc.ref,{cfg:JSON.stringify(cfg),adminCfg:JSON.stringify(adminCfg||{})}));$('pnl').append(panelEl);panelSig=JSON.stringify([data.adminCfg,data.cfg]);drawCmd(doc);}
+  else{panelEl.refresh(data);drawCmd(doc);}}
+ unsubP=F.onSnapshot(F.collection(db,'parents'),s=>{parents=s.docs.map(d=>({id:d.id,...d.data()}));drawKids();drawOne();syncNotify(false).catch(()=>{});},e=>{appEl.insertAdjacentHTML('afterbegin','<div class="c off">Parent list error: '+esc(e.code||e.message)+'</div>')});
+ unsubD=F.onSnapshot(F.collection(db,'devices'),s=>{devices=s.docs;if(selK&&!devices.some(d=>d.id===selK))selK=null;drawKids();drawOne();syncNotify(false).catch(()=>{});},e=>{appEl.insertAdjacentHTML('afterbegin','<div class="c off">Device list error: '+esc(e.code||e.message)+'</div>')});
+});
+</script></body></html>
