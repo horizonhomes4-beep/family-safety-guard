@@ -25,13 +25,13 @@ export const when=t=>{const d=new Date(t*1000),n=new Date(),day=Math.round((new 
 // Same site/app seen many times (www.x.com vs x.com, Chrome.exe vs chrome.exe) is treated as ONE entry.
 export const nsite=d=>String(d??"").trim().toLowerCase().replace(/^www\./,"");
 const mergeApps=o=>{const r={};for(const[k,v]of Object.entries(o||{})){const n=String(k).trim().toLowerCase();if(n)r[n]=(r[n]||0)+(+v||0)}return r};
-const evInfo=e=>{const am=/^(Application started|Blocked application):\s*([^\s·]+)/i.exec(e.message||"");return{app:am?am[2].toLowerCase():"",site:e.d?nsite(e.d):""}};
+const evInfo=e=>{const am=/^(Application started|Blocked application):\s*(.+?)(?:\s+·.*)?$/i.exec(e.message||"");return{app:am?am[2].trim().toLowerCase():"",site:e.d?nsite(e.d):""}};
 const hhmm=t=>new Date(t*1000).toLocaleTimeString([],{hour:"numeric",minute:"2-digit"});
 const ttl=m=>{const x=/ — (.+)$/.exec(m||"");return x?x[1]:""};
 // Blocked-site log. Preferred source: status.siteHits = {"domain":{n:count,last:unixSeconds}} (agent, later).
 // Fallback: count "Blocked website: domain" events so the page works with the current agent.
 const hits=s=>{const m={};for(const[k,v]of Object.entries(s.siteHits||{})){const key=nsite(k);m[key]=m[key]||{n:0,last:0};m[key].n+=+v.n||0;m[key].last=Math.max(m[key].last,+v.last||0)}
- if(!s.siteHits)for(const e of s.events||[]){const x=/^Blocked website:?\s*([^\s,;]+)/i.exec(e.message||"");if(x){const k=x[1].toLowerCase().replace(/^https?:\/\/|^www\.|\/.*$/g,"");m[k]=m[k]||{n:0,last:0};m[k].n++;m[k].last=Math.max(m[k].last,e.at||0)}}
+ if(!Object.keys(s.siteHits||{}).length)for(const e of s.events||[]){const x=/^Blocked website:?\s*([^\s,;]+)/i.exec(e.message||"");if(x){const k=x[1].toLowerCase().replace(/^https?:\/\/|^www\.|\/.*$/g,"");m[k]=m[k]||{n:0,last:0};m[k].n++;m[k].last=Math.max(m[k].last,e.at||0)}}
  return Object.entries(m).sort((a,b)=>b[1].last-a[1].last)};
 const BR=["chrome.exe","msedge.exe","firefox.exe","brave.exe","opera.exe","vivaldi.exe","safari.exe"];
 const FILTERS=[["adult","Adult content","Pornography and explicit sites"],["gambling","Gambling & betting","Casinos, sportsbooks, lotteries"],["social","Social media","Facebook, TikTok, Instagram and similar"],["proxy","VPNs & proxies","Stops filter bypass tools"],["safe","Safe search","Google, Bing and YouTube restricted mode"]];
@@ -53,7 +53,7 @@ const GAME_RX=/(roblox|minecraft|fortnite|valorant|leagueclient|leagueoflegends|
 const NOT_GAME=/(gamebar|gameinput|gamingservices|xboxpcapp|xboxapp)/i;
 // Helpers that run in the background all day are not "apps the child used".
 const BG_APP=/(webview|onedrive|widgets|searchapp|searchui|securityhealth|svchost|conhost|dllhost|sihost|taskhostw|backgroundtaskhost|smartscreen|useroobe|phoneexperience|crossdevice|nvcontainer|nvidia|rtkaud|realtek|igfx|audiodg|wmiprvse|fontdrvhost|msedgeupdate|googleupdate|crashpad|^cmd\.exe|^powershell|^pythonw?\.exe|notice|helper\.exe|service\.exe|tray\.exe)/i;
-export const isGame=(n,c)=>{n=String(n||"").toLowerCase();if(!n||NOT_GAME.test(n))return false;return [...DEFAULT_GAMES,...(c.blockedGames||[]),...(c.allowedGames||[])].map(x=>String(x).toLowerCase()).includes(n)||GAME_RX.test(n)};
+export const isGame=(n,c)=>{n=String(n||"").toLowerCase();if(!n||NOT_GAME.test(n))return false;const sq=n.replace(/[\s_-]+/g,"");return [...DEFAULT_GAMES,...(c.blockedGames||[]),...(c.allowedGames||[])].map(x=>String(x).toLowerCase()).includes(n)||GAME_RX.test(n)||GAME_RX.test(sq)};
 const niceApp=n=>String(n||"").replace(/\.exe$/i,"");
 // o = {hideSite, hideApp, hideText}: anything the administrator hid from the parent is left out of the counts too.
 export function dailyStats(s,c,o){
@@ -217,26 +217,32 @@ export function panel(id,d,role,save){
     h+=`<details class="tlg k-${esc(r.kind)}" data-d="${esc(r.key)}" ${open.has(r.key)?"open":""}><summary><span class=ti>${hhmm(e0.at)}</span><span class=ic>${ic}</span><span class=tx>${name} <span class="tag gy">${n}×</span><small class=sp>${span}</small></span>${ac}<span class=chev aria-hidden=true>▾</span></summary>${histBody(r.items)}</details>`}}
   return h};
  const visits=()=>{const s=J(d.status),q=vq.trim().toLowerCase();
-  if(!s.sites)return `<div class=empty>Visited sites appear here once the updated agent (5.12+) is running on the child's Mac.</div>`;
+  if(!s.sites)return `<div class=empty>Visited sites appear here once the updated agent (v5.2+) is running on the child's Mac.</div>`;
   const tl=(s.timeline||s.events||[]),m=new Map();
   for(const x of s.sites||[]){const k=nsite(x.d);if(!k||hideSite(x.d))continue;let r=m.get(k);if(!r){r={d:k,n:0,l:0,bl:0,b:0,g:true,c:"",k:0,v:new Set()};m.set(k,r)}
    if(x.c)r.c=x.c;r.k=Math.max(r.k,+x.k||0);r.n+=+x.n||0;r.b+=+x.b||0;r.l=Math.max(r.l,+x.l||0);r.bl=Math.max(r.bl,+x.bl||0);if(!x.g||x.b)r.g=false;r.v.add(String(x.d).toLowerCase())}
   const list=[...m.values()].filter(x=>(showBg||!x.g||x.b)&&(vsf==="all"||(vsf==="blocked"&&x.b>0))&&(!q||x.d.includes(q))).sort((a,b)=>Math.max(b.l,b.bl)-Math.max(a.l,a.bl));
-  if(!list.length)return `<div class=empty>No websites match.</div>`;
+  if(!list.length){
+   const w=s.web||{},errs=w.historyErrors||[];
+   const emptyTitle=q?"No websites match your search.":vsf==="blocked"?"No blocked websites are recorded.":"No visited websites have been reported yet.";
+   const historyHint=!(w.historySources||[]).length?" Open a supported browser on the child's Mac and check Full Disk Access for the installed Python runtime in macOS Privacy & Security.":" Browser history sources are connected; wait for the next history scan or open a new website.";
+   const errorHtml=errs.length?'<div class="off"><small>'+errs.map(esc).join("<br>")+'</small></div>':"";
+   return '<div class="empty">'+esc(emptyTitle)+esc(historyHint)+errorHtml+'</div>';
+  }
   return list.map(x=>{const last=Math.max(x.l,x.bl),key="vs|"+x.d,hist=tl.filter(e=>e.d&&nsite(e.d)===x.d).sort((a,b)=>b.at-a.at),
     vars=[...x.v].filter(v=>v!==x.d);
-   return `<details class=grp data-d="${esc(key)}" ${open.has(key)?"open":""}><summary><div class=iname><a href="http://${esc(x.d)}" target=_blank rel="noopener noreferrer">${esc(x.d)}</a>
+   return `<details class="grp" data-d="${esc(key)}" ${open.has(key)?"open":""}><summary><div class=iname><a href="http://${esc(x.d)}" target=_blank rel="noopener noreferrer">${esc(x.d)}</a>
     <small>${x.n?x.n+(x.n===1?" visit":" visits")+" · ":""}Last: ${when(last)}</small>
     <span class=tags>${x.b?`<span class="tag bad">blocked ${x.b}×</span>`:""}${x.k?`<span class="tag bad">⛔ opened although blocked</span>`:""}${x.c&&!x.b&&!hasL("sites",x.d)?`<span class="tag bad">⚠ looks like ${esc(x.c)} site · not blocked</span>`:""}${hasL("sites",x.d)?`<span class="tag bad">on block list</span>`:""}${hasL("allowedSites",x.d)?`<span class="tag ok">allowed</span>`:""}${x.g?`<span class="tag gy">background</span>`:""}${adm&&isHidSite(x.d)?`<span class="tag wn">hidden from parent</span>`:""}</span></div>${acts("site",x.d)}<span class=chev aria-hidden=true>▾</span></summary>
     ${vars.length?`<div class=hbody><small>Also seen as:</small> <span class=tags>${vars.map(v=>`<span class="tag gy">${esc(v)}</span>`).join("")}</span></div>`:""}${histBody(hist)}</details>`}).join("")};
  const webMon=()=>{const s=J(d.status),w=s.web;
-  if(!w)return `<div class=t style="margin:0 0 10px"><b>Web monitoring status</b><small>Waiting for the updated agent (5.12+) to report. Run install.command again on the child's Mac.</small></div>`;
+  if(!w)return `<div class=t style="margin:0 0 10px"><b>Web monitoring status</b><small>Waiting for the updated agent (v5.9) to report. Run install.command again on the child's Mac.</small></div>`;
   const live=w.mode==="real-time-filter",src=w.historySources||[],er=w.historyErrors||[];
   return `<div class=t style="margin:0 0 10px"><b>Web monitoring status</b>
    <div>${live?"✅ Real-time blocking is on: every website lookup on this Mac is checked before the page loads.":"⚠ Real-time blocking is NOT running"+(w.dnsError?" ("+esc(w.dnsError)+")":"")+". Only the HOSTS-file list is enforced."}</div>
    <div>${src.length?"✅ Visited sites are read from the browser history of: "+src.map(esc).join(", "):"⚠ No browser history found yet. Open Chrome, Edge, Brave or Firefox once on the child's account."}${w.historyAt?` <small>· checked ${ago(w.historyAt)}</small>`:""}</div>
    ${er.length?`<div class=off><small>${er.map(esc).join("<br>")}</small></div>`:""}
-   <div>${w.privateOff?"✅ Private / Incognito browsing, guest mode and history deletion are switched off in every installed browser.":((w.privateRestricted||[]).length?"✅ Private browsing, guest mode and history deletion are switched off in: "+w.privateRestricted.map(esc).join(", ")+". ":"⚠ Private-browsing restriction is not active. ")+((w.privateUnrestricted||[]).length?"⚠ macOS does not allow this to be enforced in: "+w.privateUnrestricted.map(esc).join(", ")+" (block that browser on the Apps & games tab if needed).":"")}${(w.privateErrors||[]).length?`<br><small class=off>${w.privateErrors.map(esc).join("<br>")}</small>`:""}</div>
+   <div>${w.privateOff?"✅ Private / Incognito browsing, guest mode and history deletion are switched off.":"⚠ Private-browsing restriction not confirmed on this Mac."}</div>
    ${live?`<small>Lookups checked: ${w.dnsQueries||0} · blocked: ${w.dnsBlocked||0}</small>`:""}</div>`};
  const appsUsed=()=>{const s=J(d.status),us=mergeApps(s.apps),tl=s.timeline||s.events||[];
   const names=[...new Set([...Object.keys(us),...w.apps.map(x=>String(x).toLowerCase()),...w.allowedApps.map(x=>String(x).toLowerCase())])].filter(n=>!hideApp(n)).sort((x,y)=>(us[y]||0)-(us[x]||0));
@@ -245,7 +251,7 @@ export function panel(id,d,role,save){
     info=`<div class=iname><b>${esc(n)}</b><small>${m!=null?Math.round(m)+" min today":"not seen today"}${hist.length>1?` · opened ${hist.length}×`:""}</small>
     <span class=tags>${hasL("apps",n)?`<span class="tag bad">blocked</span>`:""}${hasL("allowedApps",n)?`<span class="tag ok">allowed</span>`:""}${adm&&isHidApp(n)?`<span class="tag wn">hidden from parent</span>`:""}</span></div>${acts("app",n)}`;
    if(!hist.length)return `<div class=item>${info}</div>`;
-   return `<details class=grp data-d="${esc(key)}" ${open.has(key)?"open":""}><summary>${info}<span class=chev aria-hidden=true>▾</span></summary>${histBody(hist)}</details>`}).join("")};
+   return `<details class="grp" data-d="${esc(key)}" ${open.has(key)?"open":""}><summary>${info}<span class=chev aria-hidden=true>▾</span></summary>${histBody(hist)}</details>`}).join("")};
  const sitesLog=()=>{const h=hits(J(d.status)).filter(([dom])=>!hideSite(dom));return h.length?h.map(([dom,v])=>`<div class=hit><div><a href="http://${esc(dom)}" target=_blank rel="noopener noreferrer">http://${esc(dom)}</a><br><small>Last: ${v.last?when(v.last):"unknown"}</small></div><span class=cnt>blocked ${v.n} ${v.n===1?"time":"times"}</span></div>`).join(""):`<div class=empty>No blocked attempts yet. Blocked websites will appear here with the time of each attempt.</div>`};
  const RT={time:"⏱ More screen time",site:"🌐 Allow website",app:"🧩 Allow app",message:"💬 Message"},LOCKKEY={time:"control",site:"sites",app:"apps",message:""};
  const reqList=()=>{if(!reqs.length)return `<div class=empty>No requests yet. When ${esc(d.name||"the child")} asks for more time, or for a site or app to be allowed, from the pop-up window, it appears here and is e-mailed to the parent and the administrator.</div>`;
@@ -276,14 +282,14 @@ export function panel(id,d,role,save){
   <div class=sec><b>Games</b>${lkt("games")}</div><div class=grid>${tg("bg","Block common games","Steam, Epic, Roblox, Minecraft and others",c.blockGames,"games")}</div>
   <div class=sec><b>Extra blocked games</b></div>${chipEd("blockedGames")}<div class=sec><b>Allowed games</b></div>${chipEd("allowedGames")}</div>
  <div class=pane data-p=time ${tab!=="time"?"hidden":""}><div class=sec><b>Daily limits and hours</b>${lkt("time")}</div><div class=fields>
-  <div class=t style="grid-column:1/-1"><b>Device-wide monitoring</b><small>No child username is required. ParentGuard detects the signed-in Mac user. Screen-time limits, allowed hours and lock/unlock apply to the whole Mac. Time is counted while a user is signed in, the screen is unlocked and the device is not locked.</small></div>
+  <div class=t style="grid-column:1/-1"><b>Mac monitoring</b><small>No child username is required. ParentGuard detects the Mac user who is signed in and applies screen-time rules, app blocking and lock/unlock to that user. Website rules apply to the whole Mac.</small></div>
   <label>School days limit (min)<input data-f=li type=number min=0 value="${c.limit??120}" ${dis("time")}></label>
   <label>Weekend limit (min)<input data-f=lw type=number min=0 value="${c.limitWk??c.limit??120}" ${dis("time")}></label>
   <label>Allowed from<input data-f=st type=time value="${c.start||"07:00"}" ${dis("time")}></label><label>Allowed until<input data-f=en type=time value="${c.end||"21:00"}" ${dis("time")}></label></div>
-  <div class=sec><b>Location</b>${lkt("location")}</div><div class=grid>${tg("loc","Share device location","Approximate (internet-based) location only on a Mac",c.locationEnabled,"location")}</div></div>
+  <div class=sec><b>Location</b>${lkt("location")}</div><div class=grid>${tg("loc","Share device location","Shows the Mac's approximate (city-level) location",c.locationEnabled,"location")}</div></div>
  ${isH("live")?"":`<div class=pane data-p=live ${tab!=="live"?"hidden":""}><div class=seg style="margin-bottom:10px">${[["all","Everything"],["web","Websites"],["block","Blocked"],["app","Apps"],["user","Users"],["screen","Screen time"]].map(([k,t])=>`<button type=button data-tlf=${k} class="${k===tlf?"act":""}">${t}</button>`).join("")}</div><div class=tl>${timeline()}</div></div>`}
  <div class=pane data-p=visits ${tab!=="visits"?"hidden":""}><div data-wm>${webMon()}</div><div class=addbar><b>Block a website</b><div class=row><input data-newsite placeholder="Paste a link or domain, e.g. https://example.com/page" aria-label="Link to block" ${dis("sites")}><button class=dg data-addblock=site ${dis("sites")}>⛔ Block link</button></div></div><div class=row><input data-vq placeholder="Search websites" value="${esc(vq)}" aria-label="Search websites"><div class=seg style="flex:none">${[["all","All"],["blocked","Blocked only"]].map(([k,t])=>`<button type=button data-vsf=${k} class="${k===vsf?"act":""}">${t}</button>`).join("")}</div></div>
-  <label class=tg style="margin:10px 0"><input type=checkbox data-bg ${showBg?"checked":""}><span class=sl></span><span class=tt><b>Show background services</b><small>Apple, Google and CDN lookups that are not sites the child chose</small></span></label><div class=vl>${visits()}</div></div>
+  <label class=tg style="margin:10px 0"><input type=checkbox data-bg ${showBg?"checked":""}><span class=sl></span><span class=tt><b>Show background services</b><small>System, Google and CDN lookups that are not sites the child chose</small></span></label><div class=vl>${visits()}</div></div>
  <div class=savebar><button data-q=save ${susp()?"disabled":""}>Save settings</button><span class=m role=status></span></div>`;
  el.innerHTML=`<div class=dhead><h3>${esc(d.name||"Child")}</h3></div><div class=pane data-h></div><div data-b></div>`;
  const $=s=>el.querySelector(s),H=$("[data-h]");
@@ -325,7 +331,7 @@ export function panel(id,d,role,save){
   if(b.dataset.vsf){vsf=b.dataset.vsf;el.querySelectorAll("[data-vsf]").forEach(x=>x.classList.toggle("act",x===b));$(".vl").innerHTML=visits();return}
   if(b.dataset.addblock){const kind=b.dataset.addblock,inp=$(kind==="site"?"[data-newsite]":"[data-newapp]");let v=inp.value.trim().toLowerCase();
    if(kind==="site")v=v.replace(/^[a-z]+:\/\//,"").replace(/^www\./,"").replace(/[\/?#:].*$/,"");else v=v.replace(/^.*[\\/]/,"");
-   if(!v||(kind==="site"&&!/^[a-z0-9-]+(\.[a-z0-9-]+)+$/.test(v))){toast(kind==="site"?"Enter a valid link or domain":"Enter an app name","bad");return}
+   if(!v||(kind==="site"&&!/^[a-z0-9-]+(\.[a-z0-9-]+)+$/.test(v))){toast(kind==="site"?"Enter a valid link or domain":"Enter an app file name","bad");return}
    const bk=kind==="site"?"sites":"apps",ak=kind==="site"?"allowedSites":"allowedApps";if(!w[bk].includes(v))w[bk].push(v);w[ak]=w[ak].filter(x=>x!==v);inp.value="";
    drawLists();redrawChips(bk);redrawChips(ak);doSave().then(drawLists);return}
   if(b.dataset.act){const kind=b.dataset.kind,n=b.dataset.n.toLowerCase(),act=b.dataset.act,bk=kind==="site"?"sites":"apps",ak=kind==="site"?"allowedSites":"allowedApps";
