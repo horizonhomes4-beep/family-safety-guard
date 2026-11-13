@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key><string>com.mfamily.safetyguard.agent</string>
+  <key>ProgramArguments</key>
+  <array><string>/Library/Application Support/MFamilySafetyGuard/.venv/bin/python</string><string>/Library/Application Support/MFamilySafetyGuard/agent.py</string></array>
+  <key>WorkingDirectory</key><string>/Library/Application Support/MFamilySafetyGuard</string>
+  <key>EnvironmentVariables</key><dict><key>PYTHONUNBUFFERED</key><string>1</string></dict>
+  <key>RunAtLoad</key><true/>
+  <key>KeepAlive</key><true/>
+  <key>AbandonProcessGroup</key><true/>
+  <key>ThrottleInterval</key><integer>10</integer>
+  <key>ProcessType</key><string>Background</string>
+  <key>StandardOutPath</key><string>/Library/Logs/MFamilySafetyGuard/launchd.out.log</string>
+  <key>StandardErrorPath</key><string>/Library/Logs/MFamilySafetyGuard/launchd.err.log</string>
+</dict>
+</plist>
